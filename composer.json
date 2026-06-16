@@ -18,5 +18,20 @@
         "hiblaphp/sql": "^1.0",
         "hiblaphp/cache": "^1.0",
         "rcalicdan/process-killer": "^1.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "phpstan/extension-installer": "^1.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        }
+    },
+    "scripts": {
+        "analyze": "php vendor/bin/phpstan analyze",
+        "format": "php vendor/bin/pint"
     }
 }

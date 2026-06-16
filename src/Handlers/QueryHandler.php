@@ -34,23 +34,40 @@ final class QueryHandler
 
     /**
      * Processes incoming JSON frames.
-     * 
+     *
+     * @param array<string, mixed> $response
+     * @param CommandRequest $cmd
+     *
      * @return bool True if the command is completely finished.
      */
     public function handleResponse(array $response, CommandRequest $cmd): bool
     {
         if ($response['status'] === 'ERROR') {
-            $cmd->promise->reject(ExceptionMapper::map($response['errorCode'], $response['errorMessage']));
+            $errorCode = isset($response['errorCode']) && \is_int($response['errorCode']) ? $response['errorCode'] : 0;
+            $errorMessage = isset($response['errorMessage']) && \is_string($response['errorMessage']) ? $response['errorMessage'] : '';
+
+            $cmd->promise->reject(ExceptionMapper::map($errorCode, $errorMessage));
+
             return true;
         }
 
         if ($response['status'] === 'COMPLETED') {
+            $resultData = isset($response['result']) && \is_array($response['result']) ? $response['result'] : [];
+
+            $affectedRows = isset($resultData['affectedRows']) && \is_int($resultData['affectedRows']) ? $resultData['affectedRows'] : 0;
+            $lastInsertId = isset($resultData['lastInsertId']) && \is_int($resultData['lastInsertId']) ? $resultData['lastInsertId'] : 0;
+
+            /** @var array<int, array<string, mixed>> $rows */
+            $rows = isset($resultData['rows']) && \is_array($resultData['rows']) ? $resultData['rows'] : [];
+
             $result = new Result(
-                affectedRows: $response['result']['affectedRows'] ?? 0,
-                lastInsertId: $response['result']['lastInsertId'] ?? 0,
-                rows: $response['result']['rows'] ?? []
+                affectedRows: $affectedRows,
+                lastInsertId: $lastInsertId,
+                rows: $rows
             );
+
             $cmd->promise->resolve($result);
+
             return true;
         }
 

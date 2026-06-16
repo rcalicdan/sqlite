@@ -33,34 +33,45 @@ final class StreamHandler
 
     /**
      * Processes incoming JSON frames.
-     * 
+     *
+     * @param array<string, mixed> $response
+     * @param CommandRequest $cmd
+     *
      * @return bool True if the command is completely finished.
      */
     public function handleResponse(array $response, CommandRequest $cmd): bool
     {
         $stream = $cmd->streamContext;
-        
+
         if ($stream === null) {
-            return true; 
+            return true;
         }
 
         if ($response['status'] === 'ERROR') {
-            $exception = ExceptionMapper::map($response['errorCode'], $response['errorMessage']);
+            $errorCode = isset($response['errorCode']) && \is_int($response['errorCode']) ? $response['errorCode'] : 0;
+            $errorMessage = isset($response['errorMessage']) && \is_string($response['errorMessage']) ? $response['errorMessage'] : '';
+
+            $exception = ExceptionMapper::map($errorCode, $errorMessage);
             $stream->error($exception);
             $cmd->promise->reject($exception);
+
             return true;
         }
 
         if ($response['status'] === 'ROW') {
-            $stream->push($response['row']);
+            /** @var array<string, mixed> $row */
+            $row = isset($response['row']) && \is_array($response['row']) ? $response['row'] : [];
+            $stream->push($row);
+
             return false;
         }
 
         if ($response['status'] === 'COMPLETED') {
             $stream->complete();
-            if (!$cmd->promise->isSettled()) {
+            if (! $cmd->promise->isSettled()) {
                 $cmd->promise->resolve($stream);
             }
+
             return true;
         }
 

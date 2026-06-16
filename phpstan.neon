@@ -1,0 +1,8 @@
+parameters:
+    level: max
+    phpVersion: 80400
+    paths:
+        - src
+    excludePaths:
+        - src/Internals/worker*.php 
+    treatPhpDocTypesAsCertain: false

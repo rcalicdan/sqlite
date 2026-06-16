@@ -19,7 +19,7 @@ final readonly class SqliteConfig
         public int $busyTimeout = 5000,
         public string $journalMode = 'WAL',
         public bool $foreignKeys = true,
-        public bool $killWorkerOnCancel = false, 
+        public bool $killWorkerOnCancel = false,
         public int $connectTimeout = 10,
     ) {
         if ($this->busyTimeout < 0) {
@@ -29,16 +29,16 @@ final readonly class SqliteConfig
 
     /**
      * Parses a configuration array into a SqliteConfig instance.
-     * 
+     *
      * Recognised keys:
      *   database, busy_timeout, journal_mode, foreign_keys, kill_worker_on_cancel, connect_timeout
-     * 
+     *
      * @param array<string, mixed> $config
      */
     public static function fromArray(array $config): self
     {
         $database = $config['database'] ?? throw new \InvalidArgumentException('Database path is required.');
-        if (!\is_string($database)) {
+        if (! \is_string($database)) {
             throw new \InvalidArgumentException('Database path must be a string.');
         }
 
@@ -46,7 +46,7 @@ final readonly class SqliteConfig
         $busyTimeout = \is_numeric($busyTimeout) ? (int) $busyTimeout : 5000;
 
         $journalMode = $config['journal_mode'] ?? 'WAL';
-        $journalMode = \is_scalar($journalMode) ? (string) $journalMode : 'WAL';
+        $journalMode = \is_string($journalMode) ? $journalMode : 'WAL';
 
         $foreignKeys = $config['foreign_keys'] ?? true;
         $foreignKeys = \is_scalar($foreignKeys) ? (bool) $foreignKeys : true;
@@ -73,7 +73,7 @@ final readonly class SqliteConfig
     public static function fromUri(string $uri): self
     {
         $parts = parse_url($uri);
-        if ($parts === false || !isset($parts['path'])) {
+        if ($parts === false || ! isset($parts['path'])) {
             throw new \InvalidArgumentException('Invalid SQLite URI: ' . $uri);
         }
 
@@ -82,12 +82,31 @@ final readonly class SqliteConfig
             parse_str($parts['query'], $query);
         }
 
+        $journalMode = isset($query['journal_mode']) && \is_string($query['journal_mode'])
+            ? $query['journal_mode']
+            : 'WAL';
+
         return new self(
             database: $parts['path'] === ':memory:' ? ':memory:' : urldecode($parts['path']),
-            busyTimeout: isset($query['busy_timeout']) ? (int) $query['busy_timeout'] : 5000,
-            journalMode: isset($query['journal_mode']) ? (string) $query['journal_mode'] : 'WAL',
-            foreignKeys: isset($query['foreign_keys']) ? filter_var($query['foreign_keys'], FILTER_VALIDATE_BOOLEAN) : true,
-            killWorkerOnCancel: isset($query['kill_worker_on_cancel']) ? filter_var($query['kill_worker_on_cancel'], FILTER_VALIDATE_BOOLEAN) : false, // <-- Disabled by default
+            busyTimeout: isset($query['busy_timeout']) && \is_numeric($query['busy_timeout']) ? (int) $query['busy_timeout'] : 5000,
+            journalMode: $journalMode,
+            foreignKeys: isset($query['foreign_keys']) && \is_scalar($query['foreign_keys']) ? filter_var($query['foreign_keys'], FILTER_VALIDATE_BOOLEAN) : true,
+            killWorkerOnCancel: isset($query['kill_worker_on_cancel']) && \is_scalar($query['kill_worker_on_cancel']) ? filter_var($query['kill_worker_on_cancel'], FILTER_VALIDATE_BOOLEAN) : false,
+        );
+    }
+
+    /**
+     * Helper to clone with a modified cancellation setting.
+     */
+    public function withQueryCancellation(bool $enabled): self
+    {
+        return new self(
+            database: $this->database,
+            busyTimeout: $this->busyTimeout,
+            journalMode: $this->journalMode,
+            foreignKeys: $this->foreignKeys,
+            killWorkerOnCancel: $enabled,
+            connectTimeout: $this->connectTimeout,
         );
     }
 }

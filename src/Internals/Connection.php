@@ -25,24 +25,42 @@ use function Hibla\await;
  */
 final class Connection
 {
-    /** @var resource|null */
+    /**
+     * @var resource|null
+     */
     private $processResource = null;
 
     private ?PromiseWritableStream $stdin = null;
+
     private ?PromiseReadableStream $stdout = null;
+
+    /**
+     * @var SplQueue<CommandRequest>
+     */
     private SplQueue $commandQueue;
+
     private ?CommandRequest $currentCommand = null;
+
     private bool $closed = false;
+
     private int $pid = 0;
 
-    // Cooperative suspension properties
     private bool $paused = false;
+
+    /**
+     * @var Promise<mixed>|null
+     */
     private ?Promise $pausePromise = null;
 
     private readonly SqliteConfig $config;
+
     private readonly QueryHandler $queryHandler;
+
     private readonly StreamHandler $streamHandler;
 
+    /**
+     * @param SqliteConfig|array<string, mixed>|string $config
+     */
     public function __construct(SqliteConfig|array|string $config)
     {
         SystemHelper::validateEnvironment();
@@ -58,12 +76,23 @@ final class Connection
         $this->streamHandler = new StreamHandler($this);
     }
 
+    /**
+     * Creates and connects a new Connection instance.
+     *
+     * @param SqliteConfig|array<string, mixed>|string $config
+     *
+     * @return PromiseInterface<self>
+     */
     public static function create(SqliteConfig|array|string $config): PromiseInterface
     {
         $connection = new self($config);
+
         return $connection->connect();
     }
 
+    /**
+     * @return PromiseInterface<self>
+     */
     public function connect(): PromiseInterface
     {
         /** @var Promise<self> $promise */
@@ -91,11 +120,13 @@ final class Connection
                 $options = PHP_OS_FAMILY === 'Windows' ? ['bypass_shell' => true] : [];
 
                 $pipes = [];
-                $this->processResource = @\proc_open($command, $descriptorSpec, $pipes, null, null, $options);
+                $process = @\proc_open($command, $descriptorSpec, $pipes, null, null, $options);
 
-                if (!\is_resource($this->processResource)) {
+                if (! \is_resource($process)) {
                     throw new ConnectionException('Failed to spawn raw SQLite process.');
                 }
+
+                $this->processResource = $process;
 
                 \stream_set_blocking($pipes[0], false);
                 \stream_set_blocking($pipes[1], false);
@@ -122,29 +153,41 @@ final class Connection
      */
     public function writeIpc(string $payload): void
     {
-        if ($this->isClosed() || $this->stdin === null) {
+        $stdin = $this->stdin;
+        if ($this->isClosed() || $stdin === null) {
             return;
         }
 
-        async(function () use ($payload): void {
+        async(function () use ($payload, $stdin): void {
             try {
-                await($this->stdin->writeAsync($payload));
+                await($stdin->writeAsync($payload));
             } catch (\Throwable $e) {
                 $this->handleCrash(new ConnectionException('Failed to write command to SQLite IPC pipe.', 0, $e));
             }
         });
     }
 
+    /**
+     * @return PromiseInterface<Result>
+     */
     public function query(string $sql): PromiseInterface
     {
+        /** @var PromiseInterface<Result> */
         return $this->enqueueCommand(CommandRequest::TYPE_QUERY, $sql);
     }
 
+    /**
+     * @return PromiseInterface<SqliteRowStream>
+     */
     public function streamQuery(string $sql, int $bufferSize = 100): PromiseInterface
     {
+        /** @var PromiseInterface<SqliteRowStream> */
         return $this->enqueueCommand(CommandRequest::TYPE_STREAM_QUERY, $sql, [], $bufferSize);
     }
 
+    /**
+     * @return PromiseInterface<PreparedStatement>
+     */
     public function prepare(string $sql): PromiseInterface
     {
         if ($this->isClosed()) {
@@ -152,29 +195,46 @@ final class Connection
         }
 
         $stmt = new PreparedStatement($this, $sql);
+
         return Promise::resolved($stmt);
     }
 
+    /**
+     * @param array<int|string, mixed> $params
+     *
+     * @return PromiseInterface<Result>
+     */
     public function executeStatement(PreparedStatement $stmt, array $params): PromiseInterface
     {
+        /** @var PromiseInterface<Result> */
         return $this->enqueueCommand(CommandRequest::TYPE_EXECUTE, $stmt->parsedSql, $params);
     }
 
+    /**
+     * @param array<int|string, mixed> $params
+     *
+     * @return PromiseInterface<SqliteRowStream>
+     */
     public function executeStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface
     {
+        /** @var PromiseInterface<SqliteRowStream> */
         return $this->enqueueCommand(CommandRequest::TYPE_EXECUTE_STREAM, $stmt->parsedSql, $params, $bufferSize);
     }
 
     public function pause(): void
     {
-        if ($this->paused) return;
+        if ($this->paused) {
+            return;
+        }
         $this->paused = true;
         $this->pausePromise = new Promise();
     }
 
     public function resume(): void
     {
-        if (!$this->paused) return;
+        if (! $this->paused) {
+            return;
+        }
         $this->paused = false;
         if ($this->pausePromise !== null) {
             $this->pausePromise->resolve(null);
@@ -182,25 +242,36 @@ final class Connection
         }
     }
 
+    /**
+     * @return PromiseInterface<bool>
+     */
     public function ping(): PromiseInterface
     {
         if ($this->isClosed()) {
             return Promise::rejected(new ConnectionException('Connection is closed.'));
         }
-        return $this->query('SELECT 1')->then(static fn() => true);
+
+        /** @var PromiseInterface<bool> */
+        return $this->query('SELECT 1')->then(static fn () => true);
     }
 
+    /**
+     * @return PromiseInterface<bool>
+     */
     public function reset(): PromiseInterface
     {
         if ($this->isClosed()) {
             return Promise::rejected(new ConnectionException('Connection is closed.'));
         }
+
         return Promise::resolved(true);
     }
 
     public function close(bool $killProcess = true): void
     {
-        if ($this->closed) return;
+        if ($this->closed) {
+            return;
+        }
 
         $this->closed = true;
 
@@ -232,17 +303,22 @@ final class Connection
 
     public function isClosed(): bool
     {
-        if ($this->closed) return true;
+        if ($this->closed) {
+            return true;
+        }
 
-        if (!\is_resource($this->processResource)) {
+        if (! \is_resource($this->processResource)) {
             return true;
         }
 
         $status = \proc_get_status($this->processResource);
-        return !$status['running'];
+
+        return ! $status['running'];
     }
 
     /**
+     * @param array<int|string, mixed> $params
+     *
      * @return PromiseInterface<mixed>
      */
     private function enqueueCommand(string $type, string $sql, array $params = [], ?int $bufferSize = null): PromiseInterface
@@ -281,6 +357,7 @@ final class Connection
     {
         if ($this->removeFromQueue($request)) {
             $request->promise->reject(new \Hibla\Promise\Exceptions\CancelledException('Command cancelled in queue.'));
+
             return;
         }
 
@@ -291,42 +368,53 @@ final class Connection
 
     private function processNextCommand(): void
     {
-        if ($this->currentCommand !== null || $this->commandQueue->isEmpty()) {
+        if ($this->commandQueue->isEmpty()) {
             return;
         }
 
-        $this->currentCommand = $this->commandQueue->dequeue();
+        $command = $this->commandQueue->dequeue();
+        if (! $command instanceof CommandRequest) {
+            return;
+        }
 
-        $cmdType = $this->currentCommand->type;
+        $this->currentCommand = $command;
+
+        $cmdType = $command->type;
         $isStream = ($cmdType === CommandRequest::TYPE_STREAM_QUERY || $cmdType === CommandRequest::TYPE_EXECUTE_STREAM);
 
         if ($isStream) {
-            $this->streamHandler->start($this->currentCommand);
+            $this->streamHandler->start($command);
         } else {
-            $this->queryHandler->start($this->currentCommand);
+            $this->queryHandler->start($command);
         }
     }
 
     private function startReadLoop(): void
     {
-        async(function (): void {
-            if ($this->stdout === null) return;
+        $stdout = $this->stdout;
+        if ($stdout === null) {
+            return;
+        }
 
+        async(function () use ($stdout): void {
             try {
-                while (null !== ($line = await($this->stdout->readLineAsync()))) {
+                while (null !== ($line = await($stdout->readLineAsync()))) {
                     $line = \trim($line);
-                    if ($line === '') continue;
+                    if ($line === '') {
+                        continue;
+                    }
 
                     $response = \json_decode($line, true);
 
-                    if (!\is_array($response)) {
+                    if (! \is_array($response)) {
                         throw new ConnectionException(
-                            "Invalid JSON received from SQLite worker: " . \json_last_error_msg() .
-                                " | Payload: " . \substr($line, 0, 200)
+                            'Invalid JSON received from SQLite worker: ' . \json_last_error_msg() .
+                                ' | Payload: ' . \substr($line, 0, 200)
                         );
                     }
 
                     if ($this->currentCommand !== null && isset($response['id']) && $response['id'] === $this->currentCommand->id) {
+                        /** @var array<string, mixed> $response */
                         $cmdType = $this->currentCommand->type;
                         $isStream = ($cmdType === CommandRequest::TYPE_STREAM_QUERY || $cmdType === CommandRequest::TYPE_EXECUTE_STREAM);
 
@@ -354,7 +442,9 @@ final class Connection
 
     private function handleCrash(\Throwable $e): void
     {
-        if ($this->closed) return;
+        if ($this->closed) {
+            return;
+        }
 
         $this->closed = true;
 
@@ -388,13 +478,17 @@ final class Connection
     {
         while (! $this->commandQueue->isEmpty()) {
             $cmd = $this->commandQueue->dequeue();
-            $cmd->promise->reject($e);
+            if ($cmd instanceof CommandRequest) {
+                $cmd->promise->reject($e);
+            }
         }
     }
 
     private function removeFromQueue(CommandRequest $request): bool
     {
         $found = false;
+
+        /** @var SplQueue<CommandRequest> $temp */
         $temp = new SplQueue();
 
         while (! $this->commandQueue->isEmpty()) {
@@ -406,7 +500,13 @@ final class Connection
             }
         }
 
-        $this->commandQueue = $temp;
+        while (! $temp->isEmpty()) {
+            $cmd = $temp->dequeue();
+            if ($cmd instanceof CommandRequest) {
+                $this->commandQueue->enqueue($cmd);
+            }
+        }
+
         return $found;
     }
 

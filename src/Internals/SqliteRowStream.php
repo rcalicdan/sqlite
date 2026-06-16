@@ -14,16 +14,30 @@ use function Hibla\await;
 
 /**
  * Concrete implementation of unbuffered row streaming for SQLite.
- * 
+ *
  * @internal
  */
 final class SqliteRowStream implements RowStreamInterface
 {
+    /**
+     * @var SplQueue<array<string, mixed>>
+     */
     private SplQueue $buffer;
+
+    /**
+     * @var array<int, string>
+     */
     private array $columnNames = [];
+
+    /**
+     * @var Promise<array<string, mixed>|null>|null
+     */
     private ?Promise $waiter = null;
+
     private bool $completed = false;
+
     private bool $cancelled = false;
+
     private ?\Throwable $error = null;
 
     /**
@@ -33,6 +47,9 @@ final class SqliteRowStream implements RowStreamInterface
 
     private ?\Closure $onCancel = null;
 
+    /**
+     * @param PromiseInterface<mixed>|null $commandPromise
+     */
     public function __construct(
         private readonly int $maxBufferSize = 100,
         private readonly ?PromiseInterface $commandPromise = null
@@ -44,10 +61,16 @@ final class SqliteRowStream implements RowStreamInterface
         get => \count($this->columnNames);
     }
 
+    /**
+     * @inheritDoc
+     */
     public array $columns {
         get => $this->columnNames;
     }
 
+    /**
+     * @inheritDoc
+     */
     public function getIterator(): \Generator
     {
         while (true) {
@@ -55,7 +78,7 @@ final class SqliteRowStream implements RowStreamInterface
                 throw $this->error;
             }
 
-            if (!$this->buffer->isEmpty()) {
+            if (! $this->buffer->isEmpty()) {
                 $row = $this->buffer->dequeue();
 
                 if ($this->backpressureHandler !== null && $this->buffer->count() < ($this->maxBufferSize / 2)) {
@@ -63,6 +86,7 @@ final class SqliteRowStream implements RowStreamInterface
                 }
 
                 yield $row;
+
                 continue;
             }
 
@@ -70,8 +94,12 @@ final class SqliteRowStream implements RowStreamInterface
                 break;
             }
 
-            $this->waiter = new Promise();
-            $row = await($this->waiter);
+            /** @var Promise<array<string, mixed>|null> $waiter */
+            $waiter = new Promise();
+            $this->waiter = $waiter;
+
+            /** @var array<string, mixed>|null $row */
+            $row = await($waiter);
             $this->waiter = null;
 
             if ($row === null) {
@@ -84,7 +112,9 @@ final class SqliteRowStream implements RowStreamInterface
 
     public function cancel(): void
     {
-        if ($this->cancelled) return;
+        if ($this->cancelled) {
+            return;
+        }
 
         $this->cancelled = true;
         $this->completed = true;
@@ -94,7 +124,7 @@ final class SqliteRowStream implements RowStreamInterface
             ($this->onCancel)();
         }
 
-        if ($this->commandPromise !== null && !$this->commandPromise->isSettled()) {
+        if ($this->commandPromise !== null && ! $this->commandPromise->isSettled()) {
             $this->commandPromise->cancel();
         }
 
@@ -104,7 +134,9 @@ final class SqliteRowStream implements RowStreamInterface
             $waiter->reject($this->error);
         }
 
-        $this->buffer = new SplQueue();
+        /** @var SplQueue<array<string, mixed>> $buffer */
+        $buffer = new SplQueue();
+        $this->buffer = $buffer;
     }
 
     public function isCancelled(): bool
@@ -112,9 +144,14 @@ final class SqliteRowStream implements RowStreamInterface
         return $this->cancelled;
     }
 
+    /**
+     * @param array<string, mixed> $row
+     */
     public function push(array $row): void
     {
-        if ($this->cancelled) return;
+        if ($this->cancelled) {
+            return;
+        }
 
         if ($this->columnNames === []) {
             $this->columnNames = array_keys($row);
@@ -122,11 +159,11 @@ final class SqliteRowStream implements RowStreamInterface
 
         if ($this->waiter !== null) {
             $waiter = $this->waiter;
-            $this->waiter = null; 
+            $this->waiter = null;
             $waiter->resolve($row);
         } else {
             $this->buffer->enqueue($row);
-            
+
             if ($this->backpressureHandler !== null && $this->buffer->count() >= $this->maxBufferSize) {
                 ($this->backpressureHandler)(true);
             }
@@ -135,7 +172,9 @@ final class SqliteRowStream implements RowStreamInterface
 
     public function complete(): void
     {
-        if ($this->cancelled) return;
+        if ($this->cancelled) {
+            return;
+        }
 
         $this->completed = true;
         $this->backpressureHandler = null;
@@ -149,7 +188,9 @@ final class SqliteRowStream implements RowStreamInterface
 
     public function error(\Throwable $e): void
     {
-        if ($this->cancelled) return;
+        if ($this->cancelled) {
+            return;
+        }
 
         $this->error = $e;
         $this->completed = true;

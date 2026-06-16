@@ -19,8 +19,8 @@ final class ExceptionMapper
     public static function map(int $code, string $message): \Throwable
     {
         return match ($code) {
-            19 => new ConstraintViolationException($message, $code), 
-            5  => new LockWaitTimeoutException($message, $code),      
+            19 => new ConstraintViolationException($message, $code),
+            5 => new LockWaitTimeoutException($message, $code),
             default => new QueryException($message, $code),
         };
     }

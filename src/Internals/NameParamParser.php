@@ -8,7 +8,7 @@ use Hibla\Sql\Exceptions\PreparedException;
 
 /**
  * Parses SQL containing named parameters (:name) into positional placeholders (?).
- * 
+ *
  * @internal
  */
 final class NameParamParser
@@ -18,7 +18,7 @@ final class NameParamParser
      */
     public static function parse(string $sql): array
     {
-        if (!str_contains($sql, ':') && !str_contains($sql, '?')) {
+        if (! str_contains($sql, ':') && ! str_contains($sql, '?')) {
             return [$sql, []];
         }
 
@@ -38,24 +38,28 @@ final class NameParamParser
                 if ($currentChar === "'" || $currentChar === '"' || $currentChar === '`') {
                     $state = $currentChar;
                     $result .= $currentChar;
+
                     continue;
                 }
 
                 if ($currentChar === '-' && $nextChar === '-') {
                     $state = '--';
                     $result .= $currentChar;
+
                     continue;
                 }
 
                 if ($currentChar === '#') {
                     $state = '#';
                     $result .= $currentChar;
+
                     continue;
                 }
 
                 if ($currentChar === '/' && $nextChar === '*') {
                     $state = '/*';
                     $result .= $currentChar;
+
                     continue;
                 }
 
@@ -66,33 +70,35 @@ final class NameParamParser
                     }
                     $result .= '?';
                     $paramIndex++;
+
                     continue;
                 }
 
                 if ($currentChar === ':' && $nextChar === ':') {
                     $result .= '::';
                     $position++;
+
                     continue;
                 }
 
                 if ($currentChar === ':' && $nextChar === '=') {
                     $result .= $currentChar;
+
                     continue;
                 }
 
                 if ($currentChar === ':') {
                     $nameStartPosition = $position + 1;
                     $paramName = '';
+                    $scanPosition = $nameStartPosition;
 
                     if ($nameStartPosition < $length) {
                         $firstCharCode = \ord($sql[$nameStartPosition]);
-                        $isValidFirstChar = ($firstCharCode >= 97 && $firstCharCode <= 122)  // a-z
-                                         || ($firstCharCode >= 65 && $firstCharCode <= 90)   // A-Z
-                                         || $firstCharCode === 95;                           // _
+                        $isValidFirstChar = ($firstCharCode >= 97 && $firstCharCode <= 122)
+                                         || ($firstCharCode >= 65 && $firstCharCode <= 90)
+                                         || $firstCharCode === 95;
 
                         if ($isValidFirstChar) {
-                            $scanPosition = $nameStartPosition;
-
                             while ($scanPosition < $length) {
                                 $nameChar = $sql[$scanPosition];
                                 $nameCharCode = \ord($nameChar);
@@ -120,6 +126,7 @@ final class NameParamParser
                         $result .= '?';
                         $paramMap[$paramIndex++] = $paramName;
                         $position = $scanPosition - 1;
+
                         continue;
                     }
                 }

@@ -17,6 +17,14 @@ final class CommandRequest
     public const string TYPE_EXECUTE = 'execute';
     public const string TYPE_EXECUTE_STREAM = 'execute_stream';
 
+    /**
+     * @param string $type
+     * @param Promise<mixed> $promise
+     * @param string $sql
+     * @param array<int|string, mixed> $params
+     * @param SqliteRowStream|null $streamContext
+     * @param string $id
+     */
     public function __construct(
         public string $type,
         public Promise $promise,

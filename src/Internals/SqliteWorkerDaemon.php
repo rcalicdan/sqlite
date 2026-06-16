@@ -8,7 +8,7 @@ use Hibla\Sqlite\ValueObjects\SqliteConfig;
 
 /**
  * The invokable RPC Daemon that runs inside the isolated parallel worker.
- * 
+ *
  * @internal
  */
 final class SqliteWorkerDaemon
@@ -17,7 +17,8 @@ final class SqliteWorkerDaemon
 
     public function __construct(
         private readonly SqliteConfig $config
-    ) {}
+    ) {
+    }
 
     public function __invoke(): void
     {
@@ -38,32 +39,50 @@ final class SqliteWorkerDaemon
         $stdin = fopen('php://stdin', 'r');
         $stdout = fopen('php://stdout', 'w');
 
+        if (! \is_resource($stdin) || ! \is_resource($stdout)) {
+            exit(1);
+        }
+
         stream_set_blocking($stdin, true);
         stream_set_blocking($stdout, true);
 
         while (($line = fgets($stdin)) !== false) {
             $line = trim($line);
-            if ($line === '') continue;
+            if ($line === '') {
+                continue;
+            }
 
             $request = json_decode($line, true);
-            if (!is_array($request) || !isset($request['id'], $request['cmd'])) {
+            if (! \is_array($request)) {
+                continue;
+            }
+
+            $id = isset($request['id']) && \is_string($request['id']) ? $request['id'] : 'unknown';
+            $cmd = isset($request['cmd']) && \is_string($request['cmd']) ? $request['cmd'] : '';
+
+            if ($id === 'unknown' || $cmd === '') {
                 continue;
             }
 
             try {
                 $this->handleCommand($request, $stdout);
             } catch (\Throwable $e) {
-                $this->writeError($request['id'], $e, $stdout);
+                $this->writeError($id, $e, $stdout);
             }
         }
     }
 
+    /**
+     * @param array<int|string, mixed> $request
+     * @param resource $stdout
+     */
     private function handleCommand(array $request, $stdout): void
     {
-        $cmd = $request['cmd'];
-        $id = $request['id'];
-        $sql = $request['sql'] ?? '';
-        $params = $request['params'] ?? [];
+        $cmd = isset($request['cmd']) && \is_string($request['cmd']) ? $request['cmd'] : '';
+        $id = isset($request['id']) && \is_string($request['id']) ? $request['id'] : '';
+        $sql = isset($request['sql']) && \is_string($request['sql']) ? $request['sql'] : '';
+        $params = isset($request['params']) && \is_array($request['params']) ? $request['params'] : [];
+
         $normalizedSql = strtoupper(ltrim($sql));
         $returnsRows = str_starts_with($normalizedSql, 'SELECT')
             || str_starts_with($normalizedSql, 'PRAGMA')
@@ -74,7 +93,7 @@ final class SqliteWorkerDaemon
             case 'execute':
                 $rows = [];
 
-                if (empty($params)) {
+                if ($params === []) {
                     if ($returnsRows) {
                         $result = $this->db->query($sql);
                         if ($result !== false) {
@@ -88,6 +107,10 @@ final class SqliteWorkerDaemon
                     }
                 } else {
                     $stmt = $this->db->prepare($sql);
+                    if ($stmt === false) {
+                        throw new \RuntimeException('Failed to prepare SQLite query statement.');
+                    }
+
                     $this->bindParams($stmt, $params);
                     $result = $stmt->execute();
 
@@ -110,12 +133,17 @@ final class SqliteWorkerDaemon
                         'rows' => $rows,
                         'affectedRows' => $this->db->changes(),
                         'lastInsertId' => $this->db->lastInsertRowID(),
-                    ]
+                    ],
                 ]);
+
                 break;
 
             case 'stream':
                 $stmt = $this->db->prepare($sql);
+                if ($stmt === false) {
+                    throw new \RuntimeException('Failed to prepare SQLite stream statement.');
+                }
+
                 $this->bindParams($stmt, $params);
                 $result = $stmt->execute();
 
@@ -124,7 +152,7 @@ final class SqliteWorkerDaemon
                         $this->writeFrame($stdout, [
                             'id' => $id,
                             'status' => 'ROW',
-                            'row' => $row
+                            'row' => $row,
                         ]);
                     }
                 }
@@ -135,28 +163,33 @@ final class SqliteWorkerDaemon
                     'result' => [
                         'affectedRows' => $this->db->changes(),
                         'lastInsertId' => $this->db->lastInsertRowID(),
-                    ]
+                    ],
                 ]);
 
                 if ($result !== false) {
                     $result->finalize();
                 }
                 $stmt->close();
+
                 break;
 
             default:
-                throw new \RuntimeException("Unknown command: {$cmd}");
+                throw new \RuntimeException('Unknown command: ' . $cmd);
         }
     }
 
+    /**
+     * @param \SQLite3Stmt $stmt
+     * @param array<int|string, mixed> $params
+     */
     private function bindParams(\SQLite3Stmt $stmt, array $params): void
     {
         foreach ($params as $key => $value) {
             $type = match (true) {
-                is_int($value) => SQLITE3_INTEGER,
-                is_float($value) => SQLITE3_FLOAT,
-                is_null($value) => SQLITE3_NULL,
-                is_bool($value) => SQLITE3_INTEGER,
+                \is_int($value) => SQLITE3_INTEGER,
+                \is_float($value) => SQLITE3_FLOAT,
+                \is_null($value) => SQLITE3_NULL,
+                \is_bool($value) => SQLITE3_INTEGER,
                 default => SQLITE3_TEXT,
             };
 
@@ -169,6 +202,10 @@ final class SqliteWorkerDaemon
         }
     }
 
+    /**
+     * @param resource $stdout
+     * @param array<string, mixed> $data
+     */
     private function writeFrame($stdout, array $data): void
     {
         try {
@@ -180,20 +217,28 @@ final class SqliteWorkerDaemon
                 'id' => $data['id'] ?? 'unknown',
                 'status' => 'ERROR',
                 'errorCode' => 0,
-                'errorMessage' => 'JSON Encoding Error in worker: ' . $e->getMessage()
+                'errorMessage' => 'JSON Encoding Error in worker: ' . $e->getMessage(),
             ]) . "\n";
             fwrite($stdout, $errorPayload);
             fflush($stdout);
         }
     }
 
-    private function writeError(string $id, \Throwable $e, $stdout = STDOUT): void
+    /**
+     * @param resource|null $stdout
+     */
+    private function writeError(string $id, \Throwable $e, $stdout = null): void
     {
-        $this->writeFrame($stdout, [
+        $target = $stdout ?? STDOUT;
+        if (! \is_resource($target)) {
+            return;
+        }
+
+        $this->writeFrame($target, [
             'id' => $id,
             'status' => 'ERROR',
             'errorCode' => $e->getCode(),
-            'errorMessage' => $e->getMessage()
+            'errorMessage' => $e->getMessage(),
         ]);
     }
 }

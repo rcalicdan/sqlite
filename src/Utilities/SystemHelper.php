@@ -14,7 +14,12 @@ use Hibla\Sql\Exceptions\ConnectionException;
 final class SystemHelper
 {
     private static ?string $phpBinary = null;
+
     private static ?string $autoloadPath = null;
+
+    /**
+     * @var int<1, max>|null
+     */
     private static ?int $cpuCount = null;
 
     /**
@@ -84,13 +89,17 @@ final class SystemHelper
             // standard composer vendor layout (vendor/autoload.php)
             $path = $dir . '/vendor/autoload.php';
             if (\file_exists($path)) {
-                return self::$autoloadPath = \realpath($path);
+                $realPath = \realpath($path);
+
+                return self::$autoloadPath = $realPath !== false ? $realPath : $path;
             }
 
             // running inside a vendor package folder already (upwards is the actual project vendor root)
             $path = $dir . '/autoload.php';
             if (\file_exists($path) && \basename(\dirname($path)) === 'vendor') {
-                return self::$autoloadPath = \realpath($path);
+                $realPath = \realpath($path);
+
+                return self::$autoloadPath = $realPath !== false ? $realPath : $path;
             }
 
             $dir = \dirname($dir);
@@ -111,6 +120,8 @@ final class SystemHelper
             return self::$cpuCount;
         }
 
+        $count = 4;
+
         if (\function_exists('shell_exec')) {
             $command = match (PHP_OS_FAMILY) {
                 'Windows' => 'wmic cpu get NumberOfLogicalProcessors /value',
@@ -122,38 +133,40 @@ final class SystemHelper
 
             if (\is_string($output) && \trim($output) !== '') {
                 if (PHP_OS_FAMILY === 'Windows' && \preg_match('/NumberOfLogicalProcessors=(\d+)/', $output, $m) === 1) {
-                    return self::$cpuCount = \max(1, (int) $m[1]);
-                } elseif (($count = (int) \trim($output)) > 0) {
-                    return self::$cpuCount = \max(1, $count);
+                    $count = (int) $m[1];
+                } elseif (($val = (int) \trim($output)) > 0) {
+                    $count = $val;
                 }
             }
         }
 
-        if (PHP_OS_FAMILY === 'Linux') {
+        if ($count === 4 && PHP_OS_FAMILY === 'Linux') {
             if (\is_readable('/sys/devices/system/cpu/present')) {
                 $content = \trim((string) \file_get_contents('/sys/devices/system/cpu/present'));
                 if (\preg_match('/^(\d+)-(\d+)$/', $content, $m) === 1) {
-                    return self::$cpuCount = \max(1, (int) $m[2] - (int) $m[1] + 1);
+                    $count = (int) $m[2] - (int) $m[1] + 1;
                 }
-            }
-
-            if (\is_readable('/proc/cpuinfo')) {
+            } elseif (\is_readable('/proc/cpuinfo')) {
                 $cpuInfo = (string) \file_get_contents('/proc/cpuinfo');
                 $matchCount = \preg_match_all('/^processor/m', $cpuInfo, $cpuMatches);
                 if ($matchCount !== false && $matchCount > 0) {
-                    return self::$cpuCount = $matchCount;
+                    $count = $matchCount;
                 }
             }
         }
 
-        if (PHP_OS_FAMILY === 'Windows') {
+        if ($count === 4 && PHP_OS_FAMILY === 'Windows') {
             $env = \getenv('NUMBER_OF_PROCESSORS');
             if ($env !== false && (int) $env > 0) {
-                return self::$cpuCount = \max(1, (int) $env);
+                $count = (int) $env;
             }
         }
 
-        return self::$cpuCount = 4;
+        /** @var int<1, max> $finalCount */
+        $finalCount = \max(1, $count);
+        self::$cpuCount = $finalCount;
+
+        return $finalCount;
     }
 
     /**
@@ -167,7 +180,7 @@ final class SystemHelper
         $requiredFunctions = ['proc_open', 'exec', 'shell_exec'];
 
         $missingFunctions = \array_filter($requiredFunctions, static function (string $function): bool {
-            return !\function_exists($function);
+            return ! \function_exists($function);
         });
 
         if (\count($missingFunctions) > 0) {

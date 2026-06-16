@@ -14,9 +14,12 @@ use Hibla\Sql\Result as ResultInterface;
 final class Result implements ResultInterface
 {
     public readonly int $rowCount;
+
     public readonly int $columnCount;
-    
-    /** @var array<int, string> */
+
+    /**
+     * @var array<int, string>
+     */
     public readonly array $columns;
 
     private int $position = 0;
@@ -32,7 +35,7 @@ final class Result implements ResultInterface
         private readonly array $rows = []
     ) {
         $this->rowCount = \count($this->rows);
-        
+
         if ($this->rowCount > 0) {
             $this->columns = array_keys($this->rows[0]);
             $this->columnCount = \count($this->columns);
