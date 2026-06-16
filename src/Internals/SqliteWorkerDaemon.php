@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Sqlite\Internals;
 
+use Hibla\Sqlite\Handlers\DaemonQueryHandler;
+use Hibla\Sqlite\Handlers\DaemonStreamHandler;
 use Hibla\Sqlite\ValueObjects\SqliteConfig;
 
 /**
@@ -46,6 +48,9 @@ final class SqliteWorkerDaemon
         stream_set_blocking($stdin, true);
         stream_set_blocking($stdout, true);
 
+        $queryHandler = new DaemonQueryHandler($this->db, $stdout);
+        $streamHandler = new DaemonStreamHandler($this->db, $stdout);
+
         while (($line = fgets($stdin)) !== false) {
             $line = trim($line);
             if ($line === '') {
@@ -65,140 +70,24 @@ final class SqliteWorkerDaemon
             }
 
             try {
-                $this->handleCommand($request, $stdout);
+                switch ($cmd) {
+                    case 'query':
+                    case 'execute':
+                        $queryHandler->handle($request);
+
+                        break;
+
+                    case 'stream':
+                        $streamHandler->handle($request);
+
+                        break;
+
+                    default:
+                        throw new \RuntimeException('Unknown command: ' . $cmd);
+                }
             } catch (\Throwable $e) {
                 $this->writeError($id, $e, $stdout);
             }
-        }
-    }
-
-    /**
-     * @param array<int|string, mixed> $request
-     * @param resource $stdout
-     */
-    private function handleCommand(array $request, $stdout): void
-    {
-        $cmd = isset($request['cmd']) && \is_string($request['cmd']) ? $request['cmd'] : '';
-        $id = isset($request['id']) && \is_string($request['id']) ? $request['id'] : '';
-        $sql = isset($request['sql']) && \is_string($request['sql']) ? $request['sql'] : '';
-        $params = isset($request['params']) && \is_array($request['params']) ? $request['params'] : [];
-
-        $normalizedSql = strtoupper(ltrim($sql));
-        $returnsRows = str_starts_with($normalizedSql, 'SELECT')
-            || str_starts_with($normalizedSql, 'PRAGMA')
-            || str_starts_with($normalizedSql, 'WITH');
-
-        switch ($cmd) {
-            case 'query':
-            case 'execute':
-                $rows = [];
-
-                if ($params === []) {
-                    if ($returnsRows) {
-                        $result = $this->db->query($sql);
-                        if ($result !== false) {
-                            while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-                                $rows[] = $row;
-                            }
-                            $result->finalize();
-                        }
-                    } else {
-                        $this->db->exec($sql);
-                    }
-                } else {
-                    $stmt = $this->db->prepare($sql);
-                    if ($stmt === false) {
-                        throw new \RuntimeException('Failed to prepare SQLite query statement.');
-                    }
-
-                    $this->bindParams($stmt, $params);
-                    $result = $stmt->execute();
-
-                    if ($returnsRows && $result !== false) {
-                        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-                            $rows[] = $row;
-                        }
-                    }
-
-                    if ($result !== false) {
-                        $result->finalize();
-                    }
-                    $stmt->close();
-                }
-
-                $this->writeFrame($stdout, [
-                    'id' => $id,
-                    'status' => 'COMPLETED',
-                    'result' => [
-                        'rows' => $rows,
-                        'affectedRows' => $this->db->changes(),
-                        'lastInsertId' => $this->db->lastInsertRowID(),
-                    ],
-                ]);
-
-                break;
-
-            case 'stream':
-                $stmt = $this->db->prepare($sql);
-                if ($stmt === false) {
-                    throw new \RuntimeException('Failed to prepare SQLite stream statement.');
-                }
-
-                $this->bindParams($stmt, $params);
-                $result = $stmt->execute();
-
-                if ($returnsRows && $result !== false) {
-                    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-                        $this->writeFrame($stdout, [
-                            'id' => $id,
-                            'status' => 'ROW',
-                            'row' => $row,
-                        ]);
-                    }
-                }
-
-                $this->writeFrame($stdout, [
-                    'id' => $id,
-                    'status' => 'COMPLETED',
-                    'result' => [
-                        'affectedRows' => $this->db->changes(),
-                        'lastInsertId' => $this->db->lastInsertRowID(),
-                    ],
-                ]);
-
-                if ($result !== false) {
-                    $result->finalize();
-                }
-                $stmt->close();
-
-                break;
-
-            default:
-                throw new \RuntimeException('Unknown command: ' . $cmd);
-        }
-    }
-
-    /**
-     * @param \SQLite3Stmt $stmt
-     * @param array<int|string, mixed> $params
-     */
-    private function bindParams(\SQLite3Stmt $stmt, array $params): void
-    {
-        foreach ($params as $key => $value) {
-            $type = match (true) {
-                \is_int($value) => SQLITE3_INTEGER,
-                \is_float($value) => SQLITE3_FLOAT,
-                \is_null($value) => SQLITE3_NULL,
-                \is_bool($value) => SQLITE3_INTEGER,
-                default => SQLITE3_TEXT,
-            };
-
-            if (is_bool($value)) {
-                $value = $value ? 1 : 0;
-            }
-
-            $bindKey = is_int($key) ? $key + 1 : $key;
-            $stmt->bindValue($bindKey, $value, $type);
         }
     }
 
@@ -208,6 +97,10 @@ final class SqliteWorkerDaemon
      */
     private function writeFrame($stdout, array $data): void
     {
+        if (! \is_resource($stdout)) {
+            return;
+        }
+
         try {
             $payload = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
             fwrite($stdout, $payload);

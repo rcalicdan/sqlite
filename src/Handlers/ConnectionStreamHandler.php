@@ -5,16 +5,15 @@ declare(strict_types=1);
 namespace Hibla\Sqlite\Handlers;
 
 use Hibla\Sqlite\Internals\Connection;
-use Hibla\Sqlite\Internals\Result;
 use Hibla\Sqlite\Utilities\ExceptionMapper;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
 
 /**
- * Handles standard, buffered queries and executions.
+ * Handles row-by-row streaming queries and executions.
  *
  * @internal
  */
-final class QueryHandler
+final class ConnectionStreamHandler
 {
     public function __construct(private readonly Connection $connection)
     {
@@ -24,7 +23,7 @@ final class QueryHandler
     {
         $payload = \json_encode([
             'id' => $request->id,
-            'cmd' => 'query',
+            'cmd' => 'stream',
             'sql' => $request->sql,
             'params' => $request->params,
         ], JSON_UNESCAPED_SLASHES);
@@ -42,31 +41,36 @@ final class QueryHandler
      */
     public function handleResponse(array $response, CommandRequest $cmd): bool
     {
+        $stream = $cmd->streamContext;
+
+        if ($stream === null) {
+            return true;
+        }
+
         if ($response['status'] === 'ERROR') {
             $errorCode = isset($response['errorCode']) && \is_int($response['errorCode']) ? $response['errorCode'] : 0;
             $errorMessage = isset($response['errorMessage']) && \is_string($response['errorMessage']) ? $response['errorMessage'] : '';
 
-            $cmd->promise->reject(ExceptionMapper::map($errorCode, $errorMessage));
+            $exception = ExceptionMapper::map($errorCode, $errorMessage);
+            $stream->error($exception);
+            $cmd->promise->reject($exception);
 
             return true;
         }
 
+        if ($response['status'] === 'ROW') {
+            /** @var array<string, mixed> $row */
+            $row = isset($response['row']) && \is_array($response['row']) ? $response['row'] : [];
+            $stream->push($row);
+
+            return false;
+        }
+
         if ($response['status'] === 'COMPLETED') {
-            $resultData = isset($response['result']) && \is_array($response['result']) ? $response['result'] : [];
-
-            $affectedRows = isset($resultData['affectedRows']) && \is_int($resultData['affectedRows']) ? $resultData['affectedRows'] : 0;
-            $lastInsertId = isset($resultData['lastInsertId']) && \is_int($resultData['lastInsertId']) ? $resultData['lastInsertId'] : 0;
-
-            /** @var array<int, array<string, mixed>> $rows */
-            $rows = isset($resultData['rows']) && \is_array($resultData['rows']) ? $resultData['rows'] : [];
-
-            $result = new Result(
-                affectedRows: $affectedRows,
-                lastInsertId: $lastInsertId,
-                rows: $rows
-            );
-
-            $cmd->promise->resolve($result);
+            $stream->complete();
+            if (! $cmd->promise->isSettled()) {
+                $cmd->promise->resolve($stream);
+            }
 
             return true;
         }

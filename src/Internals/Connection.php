@@ -7,8 +7,8 @@ namespace Hibla\Sqlite\Internals;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\ConnectionException;
-use Hibla\Sqlite\Handlers\QueryHandler;
-use Hibla\Sqlite\Handlers\StreamHandler;
+use Hibla\Sqlite\Handlers\ConnectionQueryHandler;
+use Hibla\Sqlite\Handlers\ConnectionStreamHandler;
 use Hibla\Sqlite\Utilities\SystemHelper;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
 use Hibla\Sqlite\ValueObjects\SqliteConfig;
@@ -54,9 +54,9 @@ final class Connection
 
     private readonly SqliteConfig $config;
 
-    private readonly QueryHandler $queryHandler;
+    private readonly ConnectionQueryHandler $queryHandler;
 
-    private readonly StreamHandler $streamHandler;
+    private readonly ConnectionStreamHandler $streamHandler;
 
     /**
      * @param SqliteConfig|array<string, mixed>|string $config
@@ -72,8 +72,8 @@ final class Connection
         };
 
         $this->commandQueue = new SplQueue();
-        $this->queryHandler = new QueryHandler($this);
-        $this->streamHandler = new StreamHandler($this);
+        $this->queryHandler = new ConnectionQueryHandler($this);
+        $this->streamHandler = new ConnectionStreamHandler($this);
     }
 
     /**
