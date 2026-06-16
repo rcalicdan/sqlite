@@ -50,21 +50,15 @@ final class SqliteRowStream implements RowStreamInterface
 
     public function getIterator(): \Generator
     {
-        sqlite_trace("Generator starting iteration");
-
         while (true) {
             if ($this->error !== null) {
-                sqlite_trace("Generator threw stream error");
                 throw $this->error;
             }
 
             if (!$this->buffer->isEmpty()) {
                 $row = $this->buffer->dequeue();
-                
-                sqlite_trace("Generator read row from buffer. Remaining buffer count: " . $this->buffer->count());
 
                 if ($this->backpressureHandler !== null && $this->buffer->count() < ($this->maxBufferSize / 2)) {
-                    sqlite_trace("Buffer count dropped below threshold. Calling resume backpressure handler...");
                     ($this->backpressureHandler)(false);
                 }
 
@@ -73,21 +67,17 @@ final class SqliteRowStream implements RowStreamInterface
             }
 
             if ($this->completed) {
-                sqlite_trace("Generator reached completed boundary. Exiting loop cleanly.");
                 break;
             }
 
-            sqlite_trace("Buffer empty. Generator suspending and waiting...");
             $this->waiter = new Promise();
             $row = await($this->waiter);
             $this->waiter = null;
 
             if ($row === null) {
-                sqlite_trace("Generator resumed with completion marker. Exiting loop.");
                 break;
             }
 
-            sqlite_trace("Generator resumed with row.");
             yield $row;
         }
     }
@@ -95,8 +85,6 @@ final class SqliteRowStream implements RowStreamInterface
     public function cancel(): void
     {
         if ($this->cancelled) return;
-
-        sqlite_trace("Stream::cancel() called");
 
         $this->cancelled = true;
         $this->completed = true;
@@ -111,8 +99,9 @@ final class SqliteRowStream implements RowStreamInterface
         }
 
         if ($this->waiter !== null) {
-            $this->waiter->reject($this->error);
+            $waiter = $this->waiter;
             $this->waiter = null;
+            $waiter->reject($this->error);
         }
 
         $this->buffer = new SplQueue();
@@ -132,14 +121,13 @@ final class SqliteRowStream implements RowStreamInterface
         }
 
         if ($this->waiter !== null) {
-            sqlite_trace("Stream::push() resolving active waiter directly");
-            $this->waiter->resolve($row);
+            $waiter = $this->waiter;
+            $this->waiter = null; 
+            $waiter->resolve($row);
         } else {
             $this->buffer->enqueue($row);
-            sqlite_trace("Stream::push() enqueued row to buffer. Buffer count: " . $this->buffer->count());
             
             if ($this->backpressureHandler !== null && $this->buffer->count() >= $this->maxBufferSize) {
-                sqlite_trace("Buffer count exceeded max buffer size ({$this->maxBufferSize}). Calling pause backpressure handler...");
                 ($this->backpressureHandler)(true);
             }
         }
@@ -149,13 +137,13 @@ final class SqliteRowStream implements RowStreamInterface
     {
         if ($this->cancelled) return;
 
-        sqlite_trace("Stream::complete() called");
-
         $this->completed = true;
         $this->backpressureHandler = null;
 
         if ($this->waiter !== null) {
-            $this->waiter->resolve(null);
+            $waiter = $this->waiter;
+            $this->waiter = null;
+            $waiter->resolve(null);
         }
     }
 
@@ -163,13 +151,13 @@ final class SqliteRowStream implements RowStreamInterface
     {
         if ($this->cancelled) return;
 
-        sqlite_trace("Stream::error() called");
-
         $this->error = $e;
         $this->completed = true;
 
         if ($this->waiter !== null) {
-            $this->waiter->reject($e);
+            $waiter = $this->waiter;
+            $this->waiter = null;
+            $waiter->reject($e);
         }
     }
 

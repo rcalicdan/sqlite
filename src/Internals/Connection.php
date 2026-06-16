@@ -21,10 +21,6 @@ use SplQueue;
 use function Hibla\async;
 use function Hibla\await;
 
-function sqlite_trace(string $message): void {
-    \file_put_contents(__DIR__ . '/../../trace.log', \sprintf("[%s] %s\n", \date('H:i:s.v'), $message), FILE_APPEND);
-}
-
 /**
  * @internal
  */
@@ -39,8 +35,6 @@ final class Connection
     private ?CommandRequest $currentCommand = null;
     private bool $closed = false;
     private int $pid = 0;
-
-    // Cooperative suspension properties
     private bool $paused = false;
     private ?Promise $pausePromise = null;
 
@@ -172,13 +166,6 @@ final class Connection
         if ($this->paused) return;
 
         $this->paused = true;
-        sqlite_trace("Connection::pause() called (pausing stdout stream)");
-        
-        if ($this->stdout !== null) {
-            $this->stdout->pause();
-        }
-
-        // Create the suspension promise
         $this->pausePromise = new Promise();
     }
 
@@ -190,13 +177,7 @@ final class Connection
         if (!$this->paused) return;
 
         $this->paused = false;
-        sqlite_trace("Connection::resume() called (resuming stdout stream)");
 
-        if ($this->stdout !== null) {
-            $this->stdout->resume();
-        }
-
-        // Settle the suspension promise, waking up the read loop fiber
         if ($this->pausePromise !== null) {
             $this->pausePromise->resolve(null);
             $this->pausePromise = null;
@@ -236,7 +217,6 @@ final class Connection
         if ($this->closed) return;
 
         $this->closed = true;
-        sqlite_trace("Connection::close() called (killProcess = " . ($killProcess ? 'true' : 'false') . ")");
 
         if ($this->stdin !== null) {
             $this->stdin->close();
@@ -247,14 +227,12 @@ final class Connection
             $this->stdout = null;
         }
 
-        // Wake up read loop if it's paused so it can terminate cleanly
         if ($this->pausePromise !== null) {
             $this->pausePromise->resolve(null);
             $this->pausePromise = null;
         }
 
         if ($killProcess && $this->pid > 0) {
-            sqlite_trace("Connection::close() dispatching ProcessKiller for PID {$this->pid}");
             ProcessKiller::killTreesAsync([$this->pid]);
         }
 
@@ -300,6 +278,7 @@ final class Connection
             };
             
             $request->streamContext = $stream;
+            $promise->resolve($stream);
         }
 
         $promise->onCancel(function () use ($request): void {
@@ -366,16 +345,18 @@ final class Connection
                     if ($line === '') continue;
 
                     $response = \json_decode($line, true);
-                    if (\is_array($response)) {
-                        $this->handleResponse($response);
+                    
+                    if (!\is_array($response)) {
+                        throw new ConnectionException(
+                            "Invalid JSON received from SQLite worker: " . \json_last_error_msg() . 
+                            " | Payload: " . \substr($line, 0, 200)
+                        );
                     }
 
-                    // COOPERATIVE SUSPENSION: If we are paused, suspend this fiber!
-                    // This halts the tight CPU loop, giving the consumer time to drain the buffer.
+                    $this->handleResponse($response);
+
                     if ($this->paused && $this->pausePromise !== null) {
-                        sqlite_trace("Read loop suspending cooperatively because connection is paused...");
                         await($this->pausePromise);
-                        sqlite_trace("Read loop resumed after connection unpaused.");
                     }
                 }
             } catch (\Throwable $e) {
@@ -508,6 +489,6 @@ final class Connection
 
     public function __destruct()
     {
-        $this->close(false); // GC-destruct never spawns ProcessKiller, preventing Windows deadlocks
+        $this->close(false);
     }
 }

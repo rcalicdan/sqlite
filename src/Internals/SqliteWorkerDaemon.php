@@ -171,9 +171,20 @@ final class SqliteWorkerDaemon
 
     private function writeFrame($stdout, array $data): void
     {
-        $payload = json_encode($data, JSON_UNESCAPED_SLASHES) . "\n";
-        fwrite($stdout, $payload);
-        fflush($stdout);
+        try {
+            $payload = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+            fwrite($stdout, $payload);
+            fflush($stdout);
+        } catch (\JsonException $e) {
+            $errorPayload = json_encode([
+                'id' => $data['id'] ?? 'unknown',
+                'status' => 'ERROR',
+                'errorCode' => 0,
+                'errorMessage' => 'JSON Encoding Error in worker: ' . $e->getMessage()
+            ]) . "\n";
+            fwrite($stdout, $errorPayload);
+            fflush($stdout);
+        }
     }
 
     private function writeError(string $id, \Throwable $e, $stdout = STDOUT): void
