@@ -8,25 +8,23 @@ use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\PreparedException;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
+use Hibla\Sqlite\Interfaces\ConnectionInterface;
 
 /**
  * Client-Side Prepared Statement that satisfies the SQL contracts.
- *
+ * 
  * @internal
  */
 final class PreparedStatement implements PreparedStatementInterface
 {
     private bool $isClosed = false;
-
     public readonly string $parsedSql;
-
-    /**
-     * @var array<int, string>
-     */
+    
+    /** @var array<int, string> */
     private array $paramMap = [];
 
     public function __construct(
-        private readonly Connection $connection,
+        private readonly ConnectionInterface $connection,
         private readonly string $sql
     ) {
         [$this->parsedSql, $this->paramMap] = NameParamParser::parse($this->sql);
@@ -34,9 +32,8 @@ final class PreparedStatement implements PreparedStatementInterface
 
     /**
      * {@inheritDoc}
-     *
+     * 
      * @param array<int|string, mixed> $params
-     *
      * @return PromiseInterface<Result>
      */
     public function execute(array $params = []): PromiseInterface
@@ -56,10 +53,9 @@ final class PreparedStatement implements PreparedStatementInterface
 
     /**
      * {@inheritDoc}
-     *
+     * 
      * @param array<int|string, mixed> $params
-     *
-     * @return PromiseInterface<SqliteRowStream>
+     * @return PromiseInterface<\Hibla\Sql\RowStream>
      */
     public function executeStream(array $params = []): PromiseInterface
     {
@@ -70,7 +66,6 @@ final class PreparedStatement implements PreparedStatementInterface
         try {
             $normalizedParams = $this->mapAndNormalizeParams($params);
         } catch (\Throwable $e) {
-            // Redundant @var tag removed to satisfy PHPStan's strict covariance checks
             return Promise::rejected($e);
         }
 
@@ -79,19 +74,18 @@ final class PreparedStatement implements PreparedStatementInterface
 
     /**
      * {@inheritDoc}
-     *
+     * 
      * @return PromiseInterface<void>
      */
     public function close(): PromiseInterface
     {
         $this->isClosed = true;
-
+        
         return Promise::resolved();
     }
 
     /**
      * @param array<int|string, mixed> $params
-     *
      * @return array<int|string, mixed>
      */
     private function mapAndNormalizeParams(array $params): array
@@ -100,14 +94,13 @@ final class PreparedStatement implements PreparedStatementInterface
             $mapped = [];
             foreach ($this->paramMap as $index => $name) {
                 $key = isset($params[$name]) ? $name : (isset($params[':' . $name]) ? ':' . $name : null);
-
+                
                 if ($key === null) {
                     throw new PreparedException("Missing value for named parameter: :{$name}");
                 }
-
+                
                 $mapped[$index] = $params[$key];
             }
-
             return $mapped;
         }
 

@@ -9,6 +9,7 @@ use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\ConnectionException;
 use Hibla\Sqlite\Handlers\ConnectionQueryHandler;
 use Hibla\Sqlite\Handlers\ConnectionStreamHandler;
+use Hibla\Sqlite\Interfaces\ConnectionInterface;
 use Hibla\Sqlite\Utilities\SystemHelper;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
 use Hibla\Sqlite\ValueObjects\SqliteConfig;
@@ -23,15 +24,12 @@ use function Hibla\await;
 /**
  * @internal
  */
-final class Connection
+final class AsyncConnection implements ConnectionInterface
 {
-    /**
-     * @var resource|null
-     */
+    /** @var resource|null */
     private $processResource = null;
 
     private ?PromiseWritableStream $stdin = null;
-
     private ?PromiseReadableStream $stdout = null;
 
     /**
@@ -40,11 +38,8 @@ final class Connection
     private SplQueue $commandQueue;
 
     private ?CommandRequest $currentCommand = null;
-
     private bool $closed = false;
-
     private int $pid = 0;
-
     private bool $paused = false;
 
     /**
@@ -53,9 +48,7 @@ final class Connection
     private ?Promise $pausePromise = null;
 
     private readonly SqliteConfig $config;
-
     private readonly ConnectionQueryHandler $queryHandler;
-
     private readonly ConnectionStreamHandler $streamHandler;
 
     /**
@@ -63,8 +56,6 @@ final class Connection
      */
     public function __construct(SqliteConfig|array|string $config)
     {
-        SystemHelper::validateEnvironment();
-
         $this->config = match (true) {
             $config instanceof SqliteConfig => $config,
             \is_array($config) => SqliteConfig::fromArray($config),
@@ -77,21 +68,7 @@ final class Connection
     }
 
     /**
-     * Creates and connects a new Connection instance.
-     *
-     * @param SqliteConfig|array<string, mixed>|string $config
-     *
-     * @return PromiseInterface<self>
-     */
-    public static function create(SqliteConfig|array|string $config): PromiseInterface
-    {
-        $connection = new self($config);
-
-        return $connection->connect();
-    }
-
-    /**
-     * @return PromiseInterface<self>
+     * {@inheritDoc}
      */
     public function connect(): PromiseInterface
     {
@@ -122,7 +99,7 @@ final class Connection
                 $pipes = [];
                 $process = @\proc_open($command, $descriptorSpec, $pipes, null, null, $options);
 
-                if (! \is_resource($process)) {
+                if (!\is_resource($process)) {
                     throw new ConnectionException('Failed to spawn raw SQLite process.');
                 }
 
@@ -168,7 +145,7 @@ final class Connection
     }
 
     /**
-     * @return PromiseInterface<Result>
+     * {@inheritDoc}
      */
     public function query(string $sql): PromiseInterface
     {
@@ -177,6 +154,8 @@ final class Connection
     }
 
     /**
+     * {@inheritDoc}
+     * 
      * @return PromiseInterface<SqliteRowStream>
      */
     public function streamQuery(string $sql, int $bufferSize = 100): PromiseInterface
@@ -186,7 +165,7 @@ final class Connection
     }
 
     /**
-     * @return PromiseInterface<PreparedStatement>
+     * {@inheritDoc}
      */
     public function prepare(string $sql): PromiseInterface
     {
@@ -195,14 +174,11 @@ final class Connection
         }
 
         $stmt = new PreparedStatement($this, $sql);
-
         return Promise::resolved($stmt);
     }
 
     /**
-     * @param array<int|string, mixed> $params
-     *
-     * @return PromiseInterface<Result>
+     * {@inheritDoc}
      */
     public function executeStatement(PreparedStatement $stmt, array $params): PromiseInterface
     {
@@ -211,8 +187,8 @@ final class Connection
     }
 
     /**
-     * @param array<int|string, mixed> $params
-     *
+     * {@inheritDoc}
+     * 
      * @return PromiseInterface<SqliteRowStream>
      */
     public function executeStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface
@@ -221,20 +197,22 @@ final class Connection
         return $this->enqueueCommand(CommandRequest::TYPE_EXECUTE_STREAM, $stmt->parsedSql, $params, $bufferSize);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function pause(): void
     {
-        if ($this->paused) {
-            return;
-        }
+        if ($this->paused) return;
         $this->paused = true;
         $this->pausePromise = new Promise();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function resume(): void
     {
-        if (! $this->paused) {
-            return;
-        }
+        if (!$this->paused) return;
         $this->paused = false;
         if ($this->pausePromise !== null) {
             $this->pausePromise->resolve(null);
@@ -243,35 +221,34 @@ final class Connection
     }
 
     /**
-     * @return PromiseInterface<bool>
+     * {@inheritDoc}
      */
     public function ping(): PromiseInterface
     {
         if ($this->isClosed()) {
             return Promise::rejected(new ConnectionException('Connection is closed.'));
         }
-
         /** @var PromiseInterface<bool> */
-        return $this->query('SELECT 1')->then(static fn () => true);
+        return $this->query('SELECT 1')->then(static fn() => true);
     }
 
     /**
-     * @return PromiseInterface<bool>
+     * {@inheritDoc}
      */
     public function reset(): PromiseInterface
     {
         if ($this->isClosed()) {
             return Promise::rejected(new ConnectionException('Connection is closed.'));
         }
-
         return Promise::resolved(true);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function close(bool $killProcess = true): void
     {
-        if ($this->closed) {
-            return;
-        }
+        if ($this->closed) return;
 
         $this->closed = true;
 
@@ -301,24 +278,16 @@ final class Connection
         $this->rejectQueue(new ConnectionException('Connection has been closed.'));
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function isClosed(): bool
     {
-        if ($this->closed) {
-            return true;
-        }
-
-        if (! \is_resource($this->processResource)) {
-            return true;
-        }
-
-        $status = \proc_get_status($this->processResource);
-
-        return ! $status['running'];
+        return $this->closed;
     }
 
     /**
      * @param array<int|string, mixed> $params
-     *
      * @return PromiseInterface<mixed>
      */
     private function enqueueCommand(string $type, string $sql, array $params = [], ?int $bufferSize = null): PromiseInterface
@@ -357,7 +326,6 @@ final class Connection
     {
         if ($this->removeFromQueue($request)) {
             $request->promise->reject(new \Hibla\Promise\Exceptions\CancelledException('Command cancelled in queue.'));
-
             return;
         }
 
@@ -373,7 +341,7 @@ final class Connection
         }
 
         $command = $this->commandQueue->dequeue();
-        if (! $command instanceof CommandRequest) {
+        if (!$command instanceof CommandRequest) {
             return;
         }
 
@@ -392,24 +360,20 @@ final class Connection
     private function startReadLoop(): void
     {
         $stdout = $this->stdout;
-        if ($stdout === null) {
-            return;
-        }
+        if ($stdout === null) return;
 
         async(function () use ($stdout): void {
             try {
                 while (null !== ($line = await($stdout->readLineAsync()))) {
                     $line = \trim($line);
-                    if ($line === '') {
-                        continue;
-                    }
+                    if ($line === '') continue;
 
                     $response = \json_decode($line, true);
 
-                    if (! \is_array($response)) {
+                    if (!\is_array($response)) {
                         throw new ConnectionException(
-                            'Invalid JSON received from SQLite worker: ' . \json_last_error_msg() .
-                                ' | Payload: ' . \substr($line, 0, 200)
+                            "Invalid JSON received from SQLite worker: " . \json_last_error_msg() .
+                                " | Payload: " . \substr($line, 0, 200)
                         );
                     }
 
@@ -429,7 +393,7 @@ final class Connection
                     }
 
                     if ($this->paused && $this->pausePromise !== null) {
-                        await($this->pausePromise);
+                        await($this->paused ? $this->pausePromise : Promise::resolved(null));
                     }
                 }
             } catch (\Throwable $e) {
@@ -440,11 +404,9 @@ final class Connection
         });
     }
 
-    private function handleCrash(\Throwable $e): void
+    public function handleCrash(\Throwable $e): void
     {
-        if ($this->closed) {
-            return;
-        }
+        if ($this->closed) return;
 
         $this->closed = true;
 
@@ -487,7 +449,7 @@ final class Connection
     private function removeFromQueue(CommandRequest $request): bool
     {
         $found = false;
-
+        
         /** @var SplQueue<CommandRequest> $temp */
         $temp = new SplQueue();
 

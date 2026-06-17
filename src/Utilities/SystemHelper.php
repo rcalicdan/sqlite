@@ -25,9 +25,7 @@ final class SystemHelper
     /**
      * Disable instantiation.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Detects the path to the active PHP binary executable with cross-platform fallback.
@@ -187,10 +185,27 @@ final class SystemHelper
             throw new ConnectionException(
                 \sprintf(
                     'The following required PHP functions are disabled in your php.ini: "%s". ' .
-                    'Hibla SQLite requires these functions to manage background worker daemons.',
+                        'Hibla SQLite requires these functions to manage background worker daemons.',
                     \implode('", "', $missingFunctions)
                 )
             );
         }
+    }
+
+    /**
+     * Checks if the current environment supports async background workers.
+     * Returns false if proc_open, exec, or shell_exec are disabled.
+     */
+    public static function isAsyncSupported(): bool
+    {
+        $requiredFunctions = ['proc_open', 'exec', 'shell_exec'];
+
+        foreach ($requiredFunctions as $function) {
+            if (!\function_exists($function)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

@@ -13,6 +13,7 @@ final readonly class SqliteConfig
      * @param bool $foreignKeys Whether to enforce foreign key constraints.
      * @param bool $killWorkerOnCancel Whether to forcefully kill the SQLite worker daemon if a query promise is cancelled. Defaults to false.
      * @param int $connectTimeout Compatibility with pool interfaces (seconds).
+     * @param bool $forceSync Force synchronous execution, bypassing IPC workers entirely.
      */
     public function __construct(
         public string $database,
@@ -21,6 +22,7 @@ final readonly class SqliteConfig
         public bool $foreignKeys = true,
         public bool $killWorkerOnCancel = false,
         public int $connectTimeout = 10,
+        public bool $forceSync = false,
     ) {
         if ($this->busyTimeout < 0) {
             throw new \InvalidArgumentException('busyTimeout must be greater than or equal to zero.');
@@ -29,16 +31,13 @@ final readonly class SqliteConfig
 
     /**
      * Parses a configuration array into a SqliteConfig instance.
-     *
-     * Recognised keys:
-     *   database, busy_timeout, journal_mode, foreign_keys, kill_worker_on_cancel, connect_timeout
-     *
+     * 
      * @param array<string, mixed> $config
      */
     public static function fromArray(array $config): self
     {
         $database = $config['database'] ?? throw new \InvalidArgumentException('Database path is required.');
-        if (! \is_string($database)) {
+        if (!\is_string($database)) {
             throw new \InvalidArgumentException('Database path must be a string.');
         }
 
@@ -57,23 +56,27 @@ final readonly class SqliteConfig
         $connectTimeout = $config['connect_timeout'] ?? 10;
         $connectTimeout = \is_numeric($connectTimeout) ? (int) $connectTimeout : 10;
 
+        $forceSync = $config['force_sync'] ?? false;
+        $forceSync = \is_scalar($forceSync) ? (bool) $forceSync : false;
+
         return new self(
             database: $database,
             busyTimeout: $busyTimeout,
             journalMode: $journalMode,
             foreignKeys: $foreignKeys,
             killWorkerOnCancel: $killWorkerOnCancel,
-            connectTimeout: $connectTimeout
+            connectTimeout: $connectTimeout,
+            forceSync: $forceSync
         );
     }
 
     /**
-     * Parses a DSN-like URI, e.g., sqlite:///var/www/data/db.sqlite?busy_timeout=5000
+     * Parses a DSN-like URI.
      */
     public static function fromUri(string $uri): self
     {
         $parts = parse_url($uri);
-        if ($parts === false || ! isset($parts['path'])) {
+        if ($parts === false || !isset($parts['path'])) {
             throw new \InvalidArgumentException('Invalid SQLite URI: ' . $uri);
         }
 
@@ -82,8 +85,8 @@ final readonly class SqliteConfig
             parse_str($parts['query'], $query);
         }
 
-        $journalMode = isset($query['journal_mode']) && \is_string($query['journal_mode'])
-            ? $query['journal_mode']
+        $journalMode = isset($query['journal_mode']) && \is_string($query['journal_mode']) 
+            ? $query['journal_mode'] 
             : 'WAL';
 
         return new self(
@@ -92,21 +95,7 @@ final readonly class SqliteConfig
             journalMode: $journalMode,
             foreignKeys: isset($query['foreign_keys']) && \is_scalar($query['foreign_keys']) ? filter_var($query['foreign_keys'], FILTER_VALIDATE_BOOLEAN) : true,
             killWorkerOnCancel: isset($query['kill_worker_on_cancel']) && \is_scalar($query['kill_worker_on_cancel']) ? filter_var($query['kill_worker_on_cancel'], FILTER_VALIDATE_BOOLEAN) : false,
-        );
-    }
-
-    /**
-     * Helper to clone with a modified cancellation setting.
-     */
-    public function withQueryCancellation(bool $enabled): self
-    {
-        return new self(
-            database: $this->database,
-            busyTimeout: $this->busyTimeout,
-            journalMode: $this->journalMode,
-            foreignKeys: $this->foreignKeys,
-            killWorkerOnCancel: $enabled,
-            connectTimeout: $this->connectTimeout,
+            forceSync: isset($query['force_sync']) && \is_scalar($query['force_sync']) ? filter_var($query['force_sync'], FILTER_VALIDATE_BOOLEAN) : false,
         );
     }
 }

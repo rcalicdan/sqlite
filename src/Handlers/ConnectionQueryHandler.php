@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Hibla\Sqlite\Handlers;
 
-use Hibla\Sqlite\Internals\Connection;
+use Hibla\Sqlite\Internals\AsyncConnection;
 use Hibla\Sqlite\Internals\Result;
 use Hibla\Sqlite\Utilities\ExceptionMapper;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
@@ -16,7 +16,7 @@ use Hibla\Sqlite\ValueObjects\CommandRequest;
  */
 final class ConnectionQueryHandler
 {
-    public function __construct(private readonly Connection $connection)
+    public function __construct(private readonly AsyncConnection $connection)
     {
     }
 
