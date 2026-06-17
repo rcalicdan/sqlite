@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Hibla\Sqlite\Interfaces;
 
 use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Sql\RowStream as RowStreamInterface;
 use Hibla\Sqlite\Internals\PreparedStatement;
 use Hibla\Sqlite\Internals\Result;
-use Hibla\Sql\RowStream as RowStreamInterface;
 
 /**
- * Defines the contract for both asynchronous (worker-backed) and 
+ * Defines the contract for both asynchronous (worker-backed) and
  * synchronous (direct-blocking) SQLite connections.
  */
 interface ConnectionInterface
@@ -26,6 +26,7 @@ interface ConnectionInterface
      * Executes a standard SQL query (buffered, parameterless).
      *
      * @param string $sql SQL query statement to execute.
+     *
      * @return PromiseInterface<Result>
      */
     public function query(string $sql): PromiseInterface;
@@ -35,6 +36,7 @@ interface ConnectionInterface
      *
      * @param string $sql SQL query statement to stream.
      * @param int $bufferSize Maximum rows to buffer before applying backpressure.
+     *
      * @return PromiseInterface<RowStreamInterface>
      */
     public function streamQuery(string $sql, int $bufferSize = 100): PromiseInterface;
@@ -43,6 +45,7 @@ interface ConnectionInterface
      * Prepares a SQL statement. Compiles the named-parameter bindings on the client-side.
      *
      * @param string $sql SQL query statement with placeholders.
+     *
      * @return PromiseInterface<PreparedStatement>
      */
     public function prepare(string $sql): PromiseInterface;
@@ -52,6 +55,7 @@ interface ConnectionInterface
      *
      * @param PreparedStatement $stmt The statement object.
      * @param array<int|string, mixed> $params The parameter list.
+     *
      * @return PromiseInterface<Result>
      */
     public function executeStatement(PreparedStatement $stmt, array $params): PromiseInterface;
@@ -62,6 +66,7 @@ interface ConnectionInterface
      * @param PreparedStatement $stmt The statement object.
      * @param array<int|string, mixed> $params The parameter list.
      * @param int $bufferSize Maximum rows to buffer before applying backpressure.
+     *
      * @return PromiseInterface<RowStreamInterface>
      */
     public function executeStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface;

@@ -63,6 +63,7 @@ final class ConnectionQueryHandler
             $result = new Result(
                 affectedRows: $affectedRows,
                 lastInsertId: $lastInsertId,
+                connectionId: spl_object_id($this->connection),
                 rows: $rows
             );
 
