@@ -24,14 +24,20 @@ use Hibla\Sqlite\Manager\PoolManager;
  */
 final class Transaction implements TransactionInterface
 {
-    /** @var list<callable(): void> */
+    /**
+     * @var list<callable(): void>
+     */
     private array $onCommitCallbacks = [];
 
-    /** @var list<callable(): void> */
+    /**
+     * @var list<callable(): void>
+     */
     private array $onRollbackCallbacks = [];
 
     private bool $active = true;
+
     private bool $released = false;
+
     private bool $failed = false;
 
     public function __construct(
@@ -52,6 +58,7 @@ final class Transaction implements TransactionInterface
 
         if (\count($params) === 0) {
             $promise = $this->connection->query($sql);
+
             return Promise::propagateCancellation($this->trackErrorState($promise));
         }
 
@@ -62,13 +69,14 @@ final class Transaction implements TransactionInterface
                 [$stmt, $isCached] = $result;
 
                 $innerPromise = $stmt->execute($params)->finally(function () use ($stmt, $isCached): void {
-                    if (!$isCached) {
+                    if (! $isCached) {
                         $stmt->close();
                     }
                 });
 
                 return $innerPromise;
-            });
+            })
+        ;
 
         Promise::forwardCancellation($promise, $innerPromise);
 
@@ -93,6 +101,7 @@ final class Transaction implements TransactionInterface
                         $this->failed = true;
                     });
                 }
+
                 return $stream;
             });
 
@@ -112,15 +121,17 @@ final class Transaction implements TransactionInterface
                             $this->failed = true;
                         });
 
-                        if (!$isCached) {
+                        if (! $isCached) {
                             $closePromise->finally($stmt->close(...));
                         }
                     }
+
                     return $stream;
                 });
 
                 return $innerPromise;
-            });
+            })
+        ;
 
         Promise::forwardCancellation($promise, $innerPromise);
 
@@ -135,8 +146,8 @@ final class Transaction implements TransactionInterface
         $this->ensureActiveAndNotFailed();
 
         $innerPromise = $this->connection->prepare($sql);
-        $onStreamError = function (): void { 
-            $this->failed = true; 
+        $onStreamError = function (): void {
+            $this->failed = true;
         };
 
         $promise = $innerPromise->then(
@@ -192,11 +203,13 @@ final class Transaction implements TransactionInterface
                 }
                 if ($column === null) {
                     $val = \reset($row);
+
                     return $val !== false ? $val : null;
                 }
                 if (\is_int($column)) {
                     return \array_values($row)[$column] ?? null;
                 }
+
                 return $row[$column] ?? null;
             })
         );
@@ -242,6 +255,7 @@ final class Transaction implements TransactionInterface
             function (\Throwable $e): never {
                 $this->active = false;
                 $this->failed = true;
+
                 throw new TransactionException('Failed to commit transaction: ' . $e->getMessage(), (int)$e->getCode(), $e);
             }
         )->finally($this->releaseConnection(...));
@@ -254,7 +268,7 @@ final class Transaction implements TransactionInterface
      */
     public function rollback(): PromiseInterface
     {
-        if (!$this->active) {
+        if (! $this->active) {
             return Promise::resolved();
         }
 
@@ -262,6 +276,7 @@ final class Transaction implements TransactionInterface
             $this->active = false;
             $this->failed = false;
             $this->releaseConnection();
+
             return Promise::resolved();
         }
 
@@ -289,6 +304,7 @@ final class Transaction implements TransactionInterface
     public function savepoint(string $identifier): PromiseInterface
     {
         $this->ensureActiveAndNotFailed();
+
         return Promise::propagateCancellation($this->trackErrorState($this->connection->query("SAVEPOINT `{$identifier}`")));
     }
 
@@ -298,12 +314,13 @@ final class Transaction implements TransactionInterface
     public function rollbackTo(string $identifier): PromiseInterface
     {
         $this->ensureActive();
-        
+
         // Rolling back a savepoint safely recovers the transaction state
-        $this->failed = false; 
-        
+        $this->failed = false;
+
         $promise = $this->connection->query("ROLLBACK TO SAVEPOINT `{$identifier}`")->catch(function (\Throwable $e) {
             $this->failed = true;
+
             throw $e;
         });
 
@@ -316,6 +333,7 @@ final class Transaction implements TransactionInterface
     public function releaseSavepoint(string $identifier): PromiseInterface
     {
         $this->ensureActiveAndNotFailed();
+
         return Promise::propagateCancellation($this->trackErrorState($this->connection->query("RELEASE SAVEPOINT `{$identifier}`")));
     }
 
@@ -324,7 +342,7 @@ final class Transaction implements TransactionInterface
      */
     public function isActive(): bool
     {
-        return $this->active && !$this->connection->isClosed();
+        return $this->active && ! $this->connection->isClosed();
     }
 
     /**
@@ -340,24 +358,27 @@ final class Transaction implements TransactionInterface
      */
     public function forceCancelCurrentQuery(): void
     {
-        if ($this->connection instanceof AsyncConnection && !$this->connection->isClosed()) {
+        if ($this->connection instanceof AsyncConnection && ! $this->connection->isClosed()) {
             $this->connection->close(true);
         }
     }
 
     /**
      * @template T
+     *
      * @param PromiseInterface<T> $promise
+     *
      * @return PromiseInterface<T>
      */
     private function trackErrorState(PromiseInterface $promise): PromiseInterface
     {
-        $promise->onCancel(function (): void { 
-            $this->failed = true; 
+        $promise->onCancel(function (): void {
+            $this->failed = true;
         });
 
         return $promise->catch(function (\Throwable $e) {
             $this->failed = true;
+
             throw $e;
         });
     }
@@ -370,14 +391,15 @@ final class Transaction implements TransactionInterface
         if ($this->statementCache === null) {
             return $this->connection->prepare($sql)->then(fn ($stmt) => [$stmt, false]);
         }
-        
+
         return $this->statementCache->get($sql)->then(function (mixed $stmt) use ($sql) {
             if ($stmt instanceof PreparedStatement) {
                 return [$stmt, true];
             }
-            
+
             return $this->connection->prepare($sql)->then(function (PreparedStatement $newStmt) use ($sql) {
                 $this->statementCache->set($sql, $newStmt);
+
                 return [$newStmt, true];
             });
         });
@@ -399,7 +421,7 @@ final class Transaction implements TransactionInterface
         if ($this->connection->isClosed()) {
             throw new TransactionException('Connection is closed');
         }
-        if (!$this->active) {
+        if (! $this->active) {
             throw new TransactionException('Transaction is no longer active');
         }
     }
@@ -414,10 +436,10 @@ final class Transaction implements TransactionInterface
 
     public function __destruct()
     {
-        if ($this->active && !$this->connection->isClosed() && !$this->released) {
+        if ($this->active && ! $this->connection->isClosed() && ! $this->released) {
             $this->active = false;
             $this->connection->query('ROLLBACK')->finally($this->releaseConnection(...));
-        } elseif (!$this->released) {
+        } elseif (! $this->released) {
             $this->releaseConnection();
         }
     }

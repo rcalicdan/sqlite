@@ -243,7 +243,7 @@ final class AsyncConnection implements ConnectionInterface
         }
 
         /** @var PromiseInterface<bool> */
-        return $this->query('SELECT 1')->then(static fn() => true);
+        return $this->query('SELECT 1')->then(static fn () => true);
     }
 
     /**
@@ -379,7 +379,9 @@ final class AsyncConnection implements ConnectionInterface
     private function startReadLoop(): void
     {
         $stdout = $this->stdout;
-        if ($stdout === null) return;
+        if ($stdout === null) {
+            return;
+        }
 
         async(function () use ($stdout): void {
             /** @var string $buffer */
@@ -391,6 +393,7 @@ final class AsyncConnection implements ConnectionInterface
 
                     if (trim($buffer) === '') {
                         $buffer = '';
+
                         continue;
                     }
 
@@ -461,8 +464,16 @@ final class AsyncConnection implements ConnectionInterface
             $this->stdout = null;
         }
 
+        if ($this->pausePromise !== null) {
+            $this->pausePromise->resolve(null);
+            $this->pausePromise = null;
+        }
+
+        if ($this->pid > 0) {
+            ProcessKiller::killTreesAsync([$this->pid]);
+        }
+
         if (\is_resource($this->processResource)) {
-            @\proc_terminate($this->processResource);
             @\proc_close($this->processResource);
             $this->processResource = null;
         }

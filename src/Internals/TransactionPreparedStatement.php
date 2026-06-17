@@ -7,16 +7,16 @@ namespace Hibla\Sqlite\Internals;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
-use Hibla\Sql\RowStream as RowStreamInterface;
 use Hibla\Sql\Result as ResultInterface;
+use Hibla\Sql\RowStream as RowStreamInterface;
 use Hibla\Sqlite\Interfaces\ConnectionInterface;
 
 /**
  * A wrapper around a Prepared Statement used strictly inside Transactions.
  *
- * This class automatically closes the server-side statement when it goes out 
- * of scope, preventing memory leaks. Unlike ManagedPreparedStatement, this 
- * DOES NOT release the underlying connection back to the pool, as the 
+ * This class automatically closes the server-side statement when it goes out
+ * of scope, preventing memory leaks. Unlike ManagedPreparedStatement, this
+ * DOES NOT release the underlying connection back to the pool, as the
  * Transaction still claims exclusive ownership over it.
  *
  * @internal
@@ -34,7 +34,7 @@ final class TransactionPreparedStatement implements PreparedStatementInterface
 
     /**
      * {@inheritDoc}
-     * 
+     *
      * @return PromiseInterface<ResultInterface>
      */
     public function execute(array $params = []): PromiseInterface
@@ -44,7 +44,7 @@ final class TransactionPreparedStatement implements PreparedStatementInterface
 
     /**
      * {@inheritDoc}
-     * 
+     *
      * @return PromiseInterface<RowStreamInterface>
      */
     public function executeStream(array $params = [], int $bufferSize = 100): PromiseInterface
@@ -87,7 +87,7 @@ final class TransactionPreparedStatement implements PreparedStatementInterface
 
     public function __destruct()
     {
-        if (!$this->isClosed && !$this->connection->isClosed()) {
+        if (! $this->isClosed && ! $this->connection->isClosed()) {
             $this->close();
         }
     }

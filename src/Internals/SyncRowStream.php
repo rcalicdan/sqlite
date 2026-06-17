@@ -53,9 +53,9 @@ final class SyncRowStream implements RowStreamInterface
     /**
      * Returns a promise that resolves when the stream is fully consumed or cancelled.
      * Used by the client to know when it is safe to release the connection.
-     * 
+     *
      * @internal
-     * 
+     *
      * @return PromiseInterface<void>
      */
     public function onClose(): PromiseInterface
@@ -76,7 +76,7 @@ final class SyncRowStream implements RowStreamInterface
 
         if (! $this->cancelled) {
             $this->result->finalize();
-            
+
             if ($this->closePromise->isPending()) {
                 $this->closePromise->resolve(null);
             }

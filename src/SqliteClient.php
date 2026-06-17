@@ -16,7 +16,6 @@ use Hibla\Sql\SqlClientInterface;
 use Hibla\Sql\TransactionOptions;
 use Hibla\Sqlite\Interfaces\ConnectionInterface;
 use Hibla\Sqlite\Interfaces\SqliteResult;
-use Hibla\Sqlite\Internals\AsyncConnection;
 use Hibla\Sqlite\Internals\ManagedPreparedStatement;
 use Hibla\Sqlite\Internals\PreparedStatement;
 use Hibla\Sqlite\Internals\Transaction;
@@ -42,8 +41,11 @@ final class SqliteClient implements SqlClientInterface
     private ?\WeakMap $statementCaches = null;
 
     private int $statementCacheSize;
+
     private bool $enableStatementCache;
+
     private bool $resetConnectionEnabled = false;
+
     private bool $isClosing = false;
 
     /**
@@ -109,7 +111,7 @@ final class SqliteClient implements SqlClientInterface
 
     /**
      * {@inheritDoc}
-     * 
+     *
      * @return array<string, bool|float|int>
      */
     public array $stats {
@@ -159,6 +161,7 @@ final class SqliteClient implements SqlClientInterface
                 if ($connection !== null) {
                     $pool->release($connection);
                 }
+
                 throw $e;
             })
         ;
@@ -186,6 +189,7 @@ final class SqliteClient implements SqlClientInterface
 
                 if (\count($params) === 0) {
                     $innerPromise = $conn->query($sql);
+
                     return $innerPromise;
                 }
 
@@ -195,6 +199,7 @@ final class SqliteClient implements SqlClientInterface
                             return $stmt->execute($params);
                         })
                     ;
+
                     return $innerPromise;
                 }
 
@@ -269,11 +274,13 @@ final class SqliteClient implements SqlClientInterface
 
                     if ($column === null) {
                         $value = \reset($row);
+
                         return $value !== false ? $value : null;
                     }
 
                     if (\is_int($column)) {
                         $values = \array_values($row);
+
                         return $values[$column] ?? null;
                     }
 
@@ -284,7 +291,7 @@ final class SqliteClient implements SqlClientInterface
 
     /**
      * {@inheritDoc}
-     * 
+     *
      * @return PromiseInterface<RowStreamInterface>
      */
     public function stream(string $sql, array $params = [], int $bufferSize = 100): PromiseInterface
@@ -294,6 +301,7 @@ final class SqliteClient implements SqlClientInterface
 
         $state = new class () {
             public ?ConnectionInterface $connection = null;
+
             public bool $released = false;
         };
 
@@ -336,10 +344,11 @@ final class SqliteClient implements SqlClientInterface
                         return $stream;
                     },
                     function (\Throwable $e) use ($conn, $pool, $state): never {
-                        if (!$state->released) {
+                        if (! $state->released) {
                             $state->released = true;
                             $pool->release($conn);
                         }
+
                         throw $e;
                     }
                 );
@@ -361,12 +370,12 @@ final class SqliteClient implements SqlClientInterface
     public function beginTransaction(?IsolationLevelInterface $isolationLevel = null): PromiseInterface
     {
         $pool = $this->getPool();
-        
+
         return Promise::propagateCancellation(
             $this->borrowConnection()->then(function (ConnectionInterface $conn) use ($isolationLevel, $pool) {
                 $cache = $this->getCacheForConnection($conn);
                 $promise = $conn->query('BEGIN');
-                
+
                 return $promise->then(fn () => new Transaction($conn, $pool, $cache));
             })
         );
@@ -376,7 +385,9 @@ final class SqliteClient implements SqlClientInterface
      * {@inheritDoc}
      *
      * @template TResult
+     *
      * @param callable(TransactionInterface): TResult $callback
+     *
      * @return PromiseInterface<TResult>
      */
     public function transaction(callable $callback, ?TransactionOptions $options = null): PromiseInterface
@@ -395,11 +406,12 @@ final class SqliteClient implements SqlClientInterface
                     $innerWorkPromise = async(fn () => $callback($activeTx));
                     $result = await($innerWorkPromise);
                     await($activeTx->commit());
+
                     return $result;
                 } catch (\Throwable $e) {
                     $lastError = $e;
 
-                    if ($e instanceof CancelledException && isset($innerWorkPromise) && !$innerWorkPromise->isSettled()) {
+                    if ($e instanceof CancelledException && isset($innerWorkPromise) && ! $innerWorkPromise->isSettled()) {
                         $innerWorkPromise->cancel();
                     }
 
@@ -416,13 +428,14 @@ final class SqliteClient implements SqlClientInterface
                         break;
                     }
 
-                    if (!$options->shouldRetry($e)) {
+                    if (! $options->shouldRetry($e)) {
                         throw $e;
                     }
                 } finally {
                     $activeTx = null;
                 }
             }
+
             throw $lastError ?? new \RuntimeException('Transaction failed with no recorded error.');
         });
 
@@ -438,15 +451,15 @@ final class SqliteClient implements SqlClientInterface
     /**
      * {@inheritDoc}
      */
-    public function healthCheck(): PromiseInterface 
-    { 
-        return $this->getPool()->healthCheck(); 
+    public function healthCheck(): PromiseInterface
+    {
+        return $this->getPool()->healthCheck();
     }
-    
+
     /**
      * {@inheritDoc}
      */
-    public function clearStatementCache(): void 
+    public function clearStatementCache(): void
     {
         if ($this->statementCaches !== null) {
             /** @var \WeakMap<ConnectionInterface, ArrayCache> $map */
@@ -458,7 +471,7 @@ final class SqliteClient implements SqlClientInterface
     /**
      * {@inheritDoc}
      */
-    public function closeAsync(float $timeout = 0.0): PromiseInterface 
+    public function closeAsync(float $timeout = 0.0): PromiseInterface
     {
         if ($this->pool === null) {
             return Promise::resolved();
@@ -484,7 +497,7 @@ final class SqliteClient implements SqlClientInterface
     /**
      * {@inheritDoc}
      */
-    public function close(): void 
+    public function close(): void
     {
         if ($this->pool === null) {
             return;
@@ -501,7 +514,7 @@ final class SqliteClient implements SqlClientInterface
     /**
      * @return PromiseInterface<ConnectionInterface>
      */
-    private function borrowConnection(): PromiseInterface 
+    private function borrowConnection(): PromiseInterface
     {
         $pool = $this->getPool();
 
@@ -514,15 +527,15 @@ final class SqliteClient implements SqlClientInterface
         });
     }
 
-    private function getCacheForConnection(ConnectionInterface $conn): ?ArrayCache 
+    private function getCacheForConnection(ConnectionInterface $conn): ?ArrayCache
     {
-        if (!$this->enableStatementCache || $this->statementCaches === null) {
+        if (! $this->enableStatementCache || $this->statementCaches === null) {
             return null;
         }
 
-        if (!$this->statementCaches->offsetExists($conn)) {
+        if (! $this->statementCaches->offsetExists($conn)) {
             $cache = new ArrayCache($this->statementCacheSize, function (string $key, mixed $stmt) use ($conn) {
-                if ($stmt instanceof PreparedStatement && !$conn->isClosed()) {
+                if ($stmt instanceof PreparedStatement && ! $conn->isClosed()) {
                     $stmt->close()->catch(fn () => null);
                 }
             });
@@ -535,7 +548,7 @@ final class SqliteClient implements SqlClientInterface
     /**
      * @return PromiseInterface<PreparedStatement>
      */
-    private function getCachedStatement(ConnectionInterface $conn, string $sql): PromiseInterface 
+    private function getCachedStatement(ConnectionInterface $conn, string $sql): PromiseInterface
     {
         $cache = $this->getCacheForConnection($conn);
         if ($cache === null) {
@@ -552,12 +565,13 @@ final class SqliteClient implements SqlClientInterface
 
             return $conn->prepare($sql)->then(function (PreparedStatement $newStmt) use ($sql, $cache) {
                 $cache->set($sql, $newStmt);
+
                 return $newStmt;
             });
         });
     }
 
-    private function getPool(): PoolManager 
+    private function getPool(): PoolManager
     {
         if ($this->pool === null) {
             throw new NotInitializedException('SqliteClient instance has been closed.');
@@ -566,8 +580,8 @@ final class SqliteClient implements SqlClientInterface
         return $this->pool;
     }
 
-    public function __destruct() 
-    { 
-        $this->close(); 
+    public function __destruct()
+    {
+        $this->close();
     }
 }

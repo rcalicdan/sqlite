@@ -79,7 +79,7 @@ final class SqliteRowStream implements RowStreamInterface
     /**
      * Returns a promise that resolves when the stream is fully consumed or cancelled.
      * Used by the client to know when it is safe to release the connection.
-     * 
+     *
      * @return PromiseInterface<void>
      */
     public function onClose(): PromiseInterface

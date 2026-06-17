@@ -30,7 +30,7 @@ final class ManagedPreparedStatement implements PreparedStatementInterface
 
     /**
      * {@inheritDoc}
-     * 
+     *
      * @return PromiseInterface<ResultInterface>
      */
     public function execute(array $params = []): PromiseInterface
@@ -42,7 +42,7 @@ final class ManagedPreparedStatement implements PreparedStatementInterface
 
     /**
      * {@inheritDoc}
-     * 
+     *
      * @return PromiseInterface<RowStreamInterface>
      */
     public function executeStream(array $params = [], int $bufferSize = 100): PromiseInterface
