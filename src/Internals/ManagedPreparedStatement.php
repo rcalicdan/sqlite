@@ -7,6 +7,8 @@ namespace Hibla\Sqlite\Internals;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
+use Hibla\Sql\Result as ResultInterface;
+use Hibla\Sql\RowStream as RowStreamInterface;
 use Hibla\Sqlite\Interfaces\ConnectionInterface;
 use Hibla\Sqlite\Manager\PoolManager;
 
@@ -26,6 +28,11 @@ final class ManagedPreparedStatement implements PreparedStatementInterface
     ) {
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @return PromiseInterface<ResultInterface>
+     */
     public function execute(array $params = []): PromiseInterface
     {
         $promise = $this->statement->execute($params);
@@ -33,6 +40,11 @@ final class ManagedPreparedStatement implements PreparedStatementInterface
         return Promise::propagateCancellation($promise);
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @return PromiseInterface<RowStreamInterface>
+     */
     public function executeStream(array $params = []): PromiseInterface
     {
         $promise = $this->statement->executeStream($params);
@@ -40,6 +52,9 @@ final class ManagedPreparedStatement implements PreparedStatementInterface
         return Promise::propagateCancellation($promise);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function close(): PromiseInterface
     {
         return $this->statement->close()->finally($this->releaseConnection(...));

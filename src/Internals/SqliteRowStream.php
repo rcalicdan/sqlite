@@ -34,6 +34,11 @@ final class SqliteRowStream implements RowStreamInterface
      */
     private ?Promise $waiter = null;
 
+    /**
+     * @var Promise<void>
+     */
+    private readonly Promise $closePromise;
+
     private bool $completed = false;
 
     private bool $cancelled = false;
@@ -55,6 +60,9 @@ final class SqliteRowStream implements RowStreamInterface
         private readonly ?PromiseInterface $commandPromise = null
     ) {
         $this->buffer = new SplQueue();
+        /** @var Promise<void> $closePromise */
+        $closePromise = new Promise();
+        $this->closePromise = $closePromise;
     }
 
     public int $columnCount {
@@ -62,14 +70,25 @@ final class SqliteRowStream implements RowStreamInterface
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public array $columns {
         get => $this->columnNames;
     }
 
     /**
-     * @inheritDoc
+     * Returns a promise that resolves when the stream is fully consumed or cancelled.
+     * Used by the client to know when it is safe to release the connection.
+     * 
+     * @return PromiseInterface<void>
+     */
+    public function onClose(): PromiseInterface
+    {
+        return $this->closePromise;
+    }
+
+    /**
+     * {@inheritDoc}
      */
     public function getIterator(): \Generator
     {
@@ -110,6 +129,9 @@ final class SqliteRowStream implements RowStreamInterface
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function cancel(): void
     {
         if ($this->cancelled) {
@@ -134,11 +156,18 @@ final class SqliteRowStream implements RowStreamInterface
             $waiter->reject($this->error);
         }
 
+        if ($this->closePromise->isPending()) {
+            $this->closePromise->reject($this->error);
+        }
+
         /** @var SplQueue<array<string, mixed>> $buffer */
         $buffer = new SplQueue();
         $this->buffer = $buffer;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function isCancelled(): bool
     {
         return $this->cancelled;
@@ -184,6 +213,10 @@ final class SqliteRowStream implements RowStreamInterface
             $this->waiter = null;
             $waiter->resolve(null);
         }
+
+        if ($this->closePromise->isPending()) {
+            $this->closePromise->resolve(null);
+        }
     }
 
     public function error(\Throwable $e): void
@@ -199,6 +232,10 @@ final class SqliteRowStream implements RowStreamInterface
             $waiter = $this->waiter;
             $this->waiter = null;
             $waiter->reject($e);
+        }
+
+        if ($this->closePromise->isPending()) {
+            $this->closePromise->reject($e);
         }
     }
 
