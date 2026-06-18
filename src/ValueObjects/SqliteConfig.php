@@ -70,23 +70,64 @@ final readonly class SqliteConfig
             foreignKeys: $foreignKeys,
             killWorkerOnCancel: $killWorkerOnCancel,
             connectTimeout: $connectTimeout,
-            forceSync: $forceSync
+            forceSync: $forceSync,
+            resetConnection: $resetConnection
         );
     }
 
     /**
-     * Parses a DSN-like URI.
-     */
+      * Parses a DSN-like URI safely across all operating systems.
+      */
     public static function fromUri(string $uri): self
     {
-        $parts = parse_url($uri);
-        if ($parts === false || ! isset($parts['path'])) {
+        $normalizedUri = preg_replace('/^sqlite3:\/\//i', 'sqlite://', $uri);
+        if ($normalizedUri === null) {
+            $normalizedUri = $uri;
+        }
+
+        $queryStr = '';
+        $pathPart = $normalizedUri;
+
+        if (($pos = strpos($normalizedUri, '?')) !== false) {
+            $pathPart = substr($normalizedUri, 0, $pos);
+            $queryStr = substr($normalizedUri, $pos + 1);
+        }
+
+        $prefix = 'sqlite://';
+        if (str_starts_with($pathPart, $prefix)) {
+            $path = substr($pathPart, strlen($prefix));
+        } else {
+            if (str_starts_with(strtolower($pathPart), 'sqlite:')) {
+                $path = substr($pathPart, 7);
+            } else {
+                $path = $pathPart;
+            }
+        }
+
+        $decodedPath = urldecode($path);
+        $cleanPath = ltrim($decodedPath, '/');
+
+        if ($cleanPath === ':memory:') {
+            $database = ':memory:';
+        } else {
+            $database = $decodedPath;
+
+            if (preg_match('/^\/[a-zA-Z]:/', $database) === 1) {
+                $database = substr($database, 1);
+            }
+
+            if (str_starts_with($database, '//')) {
+                $database = '/' . ltrim($database, '/');
+            }
+        }
+
+        if ($database === '') {
             throw new \InvalidArgumentException('Invalid SQLite URI: ' . $uri);
         }
 
         $query = [];
-        if (isset($parts['query']) && \is_string($parts['query'])) {
-            parse_str($parts['query'], $query);
+        if ($queryStr !== '') {
+            parse_str($queryStr, $query);
         }
 
         $journalMode = isset($query['journal_mode']) && \is_string($query['journal_mode'])
@@ -94,7 +135,7 @@ final readonly class SqliteConfig
             : 'WAL';
 
         return new self(
-            database: $parts['path'] === ':memory:' ? ':memory:' : urldecode($parts['path']),
+            database: $database,
             busyTimeout: isset($query['busy_timeout']) && \is_numeric($query['busy_timeout']) ? (int) $query['busy_timeout'] : 5000,
             journalMode: $journalMode,
             foreignKeys: isset($query['foreign_keys']) && \is_scalar($query['foreign_keys']) ? filter_var($query['foreign_keys'], FILTER_VALIDATE_BOOLEAN) : true,

@@ -7,10 +7,10 @@ use Hibla\Sqlite\Handlers\AbstractDaemonHandler;
 describe('AbstractDaemonHandler', function (): void {
 
     it('writes a JSON encoded frame to stdout with a trailing newline', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $stdout = fopen('php://memory', 'r+');
 
-        $handler = new class($db, $stdout) extends AbstractDaemonHandler {
+        $handler = new class ($db, $stdout) extends AbstractDaemonHandler {
             public function testWriteFrame(array $data): void
             {
                 $this->writeFrame($data);
@@ -34,10 +34,10 @@ describe('AbstractDaemonHandler', function (): void {
     });
 
     it('catches JsonExceptions and writes an ERROR frame when encoding fails', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $stdout = fopen('php://memory', 'r+');
 
-        $handler = new class($db, $stdout) extends AbstractDaemonHandler {
+        $handler = new class ($db, $stdout) extends AbstractDaemonHandler {
             public function testWriteFrame(array $data): void
             {
                 $this->writeFrame($data);
@@ -64,13 +64,13 @@ describe('AbstractDaemonHandler', function (): void {
     });
 
     it('binds parameters with correct SQLITE3 data types', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $db->enableExceptions(true);
 
         $stdout = fopen('php://memory', 'r+');
 
-        $handler = new class($db, $stdout) extends AbstractDaemonHandler {
-            public function testBindParams(\SQLite3Stmt $stmt, array $params): void
+        $handler = new class ($db, $stdout) extends AbstractDaemonHandler {
+            public function testBindParams(SQLite3Stmt $stmt, array $params): void
             {
                 $this->bindParams($stmt, $params);
             }
@@ -83,7 +83,7 @@ describe('AbstractDaemonHandler', function (): void {
             'int' => 100,
             'float' => 3.14,
             'null' => null,
-            'bool' => true, 
+            'bool' => true,
             'text' => 'hello',
         ]);
 
@@ -93,7 +93,7 @@ describe('AbstractDaemonHandler', function (): void {
         expect($row['i'])->toBe(100)
             ->and($row['f'])->toBe(3.14)
             ->and($row['n'])->toBeNull()
-            ->and($row['b'])->toBe(1) 
+            ->and($row['b'])->toBe(1)
             ->and($row['t'])->toBe('hello')
         ;
 
@@ -104,13 +104,13 @@ describe('AbstractDaemonHandler', function (): void {
     });
 
     it('correctly maps 0-indexed positional parameters to 1-based SQLite parameters', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $db->enableExceptions(true);
 
         $stdout = fopen('php://memory', 'r+');
 
-        $handler = new class($db, $stdout) extends AbstractDaemonHandler {
-            public function testBindParams(\SQLite3Stmt $stmt, array $params): void
+        $handler = new class ($db, $stdout) extends AbstractDaemonHandler {
+            public function testBindParams(SQLite3Stmt $stmt, array $params): void
             {
                 $this->bindParams($stmt, $params);
             }

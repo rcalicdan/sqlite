@@ -7,7 +7,7 @@ use Hibla\Sqlite\Handlers\DaemonQueryHandler;
 describe('DaemonQueryHandler', function (): void {
 
     it('writes a COMPLETED frame after running an executive query', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $stdout = fopen('php://memory', 'r+');
 
         $handler = new DaemonQueryHandler($db, $stdout);
@@ -33,9 +33,9 @@ describe('DaemonQueryHandler', function (): void {
     });
 
     it('writes correct affectedRows and lastInsertId upon insert', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $db->exec('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)');
-        
+
         $stdout = fopen('php://memory', 'r+');
         $handler = new DaemonQueryHandler($db, $stdout);
 
@@ -60,7 +60,7 @@ describe('DaemonQueryHandler', function (): void {
     });
 
     it('returns rows and parses basic types correctly on select', function () {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $db->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, age INTEGER, salary REAL)');
         $db->exec('INSERT INTO users VALUES (1, 30, 1500.50)');
 
@@ -78,7 +78,7 @@ describe('DaemonQueryHandler', function (): void {
         $frame = json_decode($output, true);
 
         expect($frame['status'])->toBe('COMPLETED');
-        
+
         $rows = $frame['result']['rows'];
         expect($rows)->toHaveCount(1)
             ->and($rows[0]['id'])->toBe(1)
@@ -90,8 +90,8 @@ describe('DaemonQueryHandler', function (): void {
         $db->close();
     });
 
-   it('throws an exception on invalid SQL statements (daemon loop catches this)', function (): void {
-        $db = new \SQLite3(':memory:');
+    it('throws an exception on invalid SQL statements (daemon loop catches this)', function (): void {
+        $db = new SQLite3(':memory:');
         $db->enableExceptions(true);
 
         $stdout = fopen('php://memory', 'r+');

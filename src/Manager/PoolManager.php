@@ -19,6 +19,7 @@ use SplQueue;
 use Throwable;
 
 use function Hibla\async;
+use function Hibla\sleep;
 
 /**
  * @internal
@@ -209,8 +210,7 @@ final class PoolManager
 
             $waiterPromise->finally(static function () use ($timerId): void {
                 Loop::cancelTimer($timerId);
-            })->catch(static function (): void {
-            });
+            })->catch(static function (): void {});
         }
 
         $this->waiters->enqueue($waiterPromise);
@@ -221,6 +221,10 @@ final class PoolManager
     public function release(ConnectionInterface $connection): void
     {
         $connId = spl_object_id($connection);
+
+        if (! isset($this->activeConnectionsMap[$connId])) {
+            return;
+        }
 
         if ($connection->isClosed()) {
             unset($this->activeConnectionsMap[$connId]);
@@ -322,8 +326,7 @@ final class PoolManager
 
             $pendingShutdown->finally(static function () use ($timerId): void {
                 Loop::cancelTimer($timerId);
-            })->catch(static function (): void {
-            });
+            })->catch(static function (): void {});
         }
 
         /** @var PromiseInterface<void> */
@@ -491,8 +494,7 @@ final class PoolManager
                         $this->pool->enqueue($connection);
                     }
                 },
-                function (Throwable $e): void {
-                }
+                function (Throwable $e): void {}
             );
         }
     }
@@ -509,7 +511,7 @@ final class PoolManager
         $setup = new ConnectionSetup($connection);
 
         /** @var PromiseInterface<ConnectionInterface> */
-        return async(fn () => ($this->onConnect)($setup))->then(fn () => $connection);
+        return async(fn() => ($this->onConnect)($setup))->then(fn() => $connection);
     }
 
     private function resetAndRelease(ConnectionInterface $connection): void
@@ -731,9 +733,20 @@ final class PoolManager
             return;
         }
 
-        @\unlink($dbFile);
-        @\unlink($dbFile . '-wal');
-        @\unlink($dbFile . '-shm');
+        $files = [$dbFile, $dbFile . '-wal', $dbFile . '-shm'];
+
+        foreach ($files as $file) {
+            if (! \file_exists($file)) {
+                continue;
+            }
+
+            for ($attempt = 0; $attempt < 10; $attempt++) {
+                if (@\unlink($file)) {
+                    break;
+                }
+                sleep(0.01);
+            }
+        }
     }
 
     public function __destruct()

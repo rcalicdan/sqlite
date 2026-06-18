@@ -7,7 +7,7 @@ use Hibla\Sqlite\Handlers\DaemonStreamHandler;
 describe('DaemonStreamHandler', function (): void {
 
     it('writes separate ROW frames for each selected row and ends with a COMPLETED frame', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $db->exec('CREATE TABLE items (val TEXT)');
         $db->exec("INSERT INTO items VALUES ('A'), ('B'), ('C')");
 
@@ -50,7 +50,7 @@ describe('DaemonStreamHandler', function (): void {
     });
 
     it('binds parameters correctly during streaming queries', function (): void {
-        $db = new \SQLite3(':memory:');
+        $db = new SQLite3(':memory:');
         $db->exec('CREATE TABLE items (id INTEGER, val TEXT)');
         $db->exec("INSERT INTO items VALUES (1, 'A'), (2, 'B'), (3, 'C')");
 

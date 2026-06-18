@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Hibla\Sqlite\Interfaces\ConnectionInterface;
 use Hibla\Sqlite\Internals\ConnectionFactory;
+use Hibla\Sqlite\Manager\PoolManager;
 use Hibla\Sqlite\SqliteClient;
 use Hibla\Sqlite\ValueObjects\SqliteConfig;
 
@@ -14,6 +15,9 @@ function tempDbFile(): string
     return sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'hibla_sqlite_' . bin2hex(random_bytes(8)) . '.db';
 }
 
+/**
+ * @param array<string, mixed> $overrides
+ */
 function dbConfig(array $overrides = []): SqliteConfig
 {
     $db = $overrides['database'] ?? tempDbFile();
@@ -26,13 +30,16 @@ function dbConfig(array $overrides = []): SqliteConfig
 }
 
 /**
- * Creates a raw connection (Async by default, Sync if 'force_sync' => true).
+ * @param array<string, mixed> $overrides
  */
 function sqliteConn(array $overrides = []): ConnectionInterface
 {
     return await(ConnectionFactory::create(dbConfig($overrides)));
 }
 
+/**
+ * @param array<string, mixed> $overrides
+ */
 function makeClient(array $overrides = []): SqliteClient
 {
     return new SqliteClient(
@@ -45,6 +52,24 @@ function makeClient(array $overrides = []): SqliteClient
         enableStatementCache: $overrides['enableStatementCache'] ?? true,
         maxWaiters: $overrides['maxWaiters'] ?? 0,
         acquireTimeout: $overrides['acquireTimeout'] ?? 10.0,
+        onConnect: $overrides['onConnect'] ?? null,
+        deleteDatabaseOnShutdown: $overrides['deleteDatabaseOnShutdown'] ?? true,
+    );
+}
+
+/**
+ * @param array<string, mixed> $overrides
+ */
+function makePool(array $overrides = []): PoolManager
+{
+    return new PoolManager(
+        config: dbConfig($overrides),
+        maxSize: $overrides['maxSize'] ?? 5,
+        minSize: $overrides['minSize'] ?? 0,
+        idleTimeout: $overrides['idleTimeout'] ?? 300,
+        maxLifetime: $overrides['maxLifetime'] ?? 3600,
+        maxWaiters: $overrides['maxWaiters'] ?? 0,
+        acquireTimeout: $overrides['acquireTimeout'] ?? 0.0,
         onConnect: $overrides['onConnect'] ?? null,
         deleteDatabaseOnShutdown: $overrides['deleteDatabaseOnShutdown'] ?? true,
     );

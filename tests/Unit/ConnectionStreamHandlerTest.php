@@ -33,12 +33,13 @@ describe('ConnectionStreamHandler', function (): void {
             ->once()
             ->with(Mockery::on(function (string $payload) use ($request) {
                 $frame = json_decode($payload, true);
-                
+
                 return is_array($frame)
                     && $frame['id'] === $request->id
                     && $frame['cmd'] === 'stream'
                     && $frame['sql'] === 'SELECT * FROM items';
-            }));
+            }))
+        ;
 
         $handler = new ConnectionStreamHandler($connection);
         $handler->start($request);
@@ -96,14 +97,14 @@ describe('ConnectionStreamHandler', function (): void {
         expect($resolvedStream)->toBe($stream);
     });
 
-  it('forwards error to the stream and rejects the promise on ERROR response', function (): void {
+    it('forwards error to the stream and rejects the promise on ERROR response', function (): void {
         $connection = Mockery::mock(AsyncConnection::class);
         $handler = new ConnectionStreamHandler($connection);
 
         $promise = new Promise();
         $stream = new SqliteRowStream(10, $promise);
 
-        $stream->onClose()->catch(function (\Throwable $e): void {
+        $stream->onClose()->catch(function (Throwable $e): void {
             // Suppress unhandled closePromise rejection in unit test
         });
 

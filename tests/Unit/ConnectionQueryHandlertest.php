@@ -31,13 +31,14 @@ describe('ConnectionQueryHandler', function (): void {
             ->once()
             ->with(Mockery::on(function (string $payload) use ($request) {
                 $frame = json_decode($payload, true);
-                
+
                 return is_array($frame)
                     && $frame['id'] === $request->id
                     && $frame['cmd'] === 'query'
                     && $frame['sql'] === 'SELECT * FROM users WHERE id = :id'
                     && $frame['params'] === ['id' => 42];
-            }));
+            }))
+        ;
 
         $handler = new ConnectionQueryHandler($connection);
         $handler->start($request);
@@ -89,7 +90,7 @@ describe('ConnectionQueryHandler', function (): void {
             'status' => 'ERROR',
             'class' => SQLite3Exception::class,
             'message' => 'syntax error',
-            'code' => 1, 
+            'code' => 1,
         ];
 
         $isFinished = $handler->handleResponse($response, $request);
