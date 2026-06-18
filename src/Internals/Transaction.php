@@ -97,6 +97,7 @@ final class Transaction implements TransactionInterface
             $tracked = $this->trackErrorState($promise)->then(function (RowStreamInterface $stream): RowStreamInterface {
                 if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
                     $closePromise = $stream->onClose();
+                    $closePromise->catch(static fn () => null);
                     $closePromise->catch(function (): void {
                         $this->failed = true;
                     });
@@ -117,7 +118,7 @@ final class Transaction implements TransactionInterface
                 $innerPromise = $stmt->executeStream($params, $bufferSize)->then(function (RowStreamInterface $stream) use ($stmt, $isCached): RowStreamInterface {
                     if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
                         $closePromise = $stream->onClose();
-                        $closePromise->catch(function (): void {
+                        $closePromise->catch(function (\Throwable $e): void {
                             $this->failed = true;
                         });
 
@@ -321,13 +322,13 @@ final class Transaction implements TransactionInterface
         $this->failed = false;
 
         $promise = $this->connection->query("ROLLBACK TO SAVEPOINT `{$identifier}`")
-        ->then(function (): void {
-        })
-        ->catch(function (\Throwable $e) {
-            $this->failed = true;
+            ->then(function (): void {
+            })
+            ->catch(function (\Throwable $e) {
+                $this->failed = true;
 
-            throw $e;
-        })
+                throw $e;
+            })
         ;
 
         return Promise::propagateCancellation($promise);

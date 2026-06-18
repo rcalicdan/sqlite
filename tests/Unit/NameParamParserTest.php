@@ -397,9 +397,9 @@ describe('NameParamParser', function (): void {
         it('handles a large number of named parameters correctly', function (): void {
             $parts = array_map(fn (int $n) => "col{$n} = :param{$n}", range(1, 200));
             $query = 'SELECT * FROM t WHERE ' . implode(' AND ', $parts);
-            
+
             [$sql, $map] = NameParamParser::parse($query);
-            
+
             expect(count($map))->toBe(200)
                 ->and($map[0])->toBe('param1')
                 ->and($map[199])->toBe('param200')
@@ -420,7 +420,7 @@ describe('NameParamParser', function (): void {
             $query = 'SELECT * FROM t WHERE id = :id AND status = :status';
             [$sql1, $map1] = NameParamParser::parse($query);
             [$sql2, $map2] = NameParamParser::parse($query);
-            
+
             expect($sql1)->toBe($sql2)
                 ->and($map1)->toBe($map2)
             ;

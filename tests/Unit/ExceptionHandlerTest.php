@@ -116,6 +116,7 @@ TRACE;
             foreach ($trace as $index => $frame) {
                 if (($frame['file'] ?? '') === '--- WORKER STACK TRACE ---') {
                     $boundaryIndex = $index;
+
                     break;
                 }
             }

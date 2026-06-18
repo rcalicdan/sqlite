@@ -82,7 +82,7 @@ final class SqliteClient implements SqlClientInterface
         int $maxWaiters = 0,
         float $acquireTimeout = 10.0,
         ?callable $onConnect = null,
-        bool $deleteDatabaseOnShutdown = false, // <-- ADDED HERE
+        bool $deleteDatabaseOnShutdown = false,
     ) {
         $params = match (true) {
             $config instanceof SqliteConfig => $config,
@@ -335,9 +335,15 @@ final class SqliteClient implements SqlClientInterface
                             $state->released = true;
                             /** @var PromiseInterface<mixed> $closePromise */
                             $closePromise = $stream->onClose();
-                            $closePromise->finally(function () use ($pool, $conn): void {
-                                $pool->release($conn);
-                            });
+
+                            $closePromise
+                                ->catch(function (\Throwable $e): void {
+                                    // Suppress unhandled rejection errors on stream cancellation/closure
+                                })
+                                ->finally(function () use ($pool, $conn): void {
+                                    $pool->release($conn);
+                                })
+                            ;
                         } else {
                             $state->released = true;
                             $pool->release($conn);

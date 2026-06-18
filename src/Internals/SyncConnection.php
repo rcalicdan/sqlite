@@ -6,6 +6,7 @@ namespace Hibla\Sqlite\Internals;
 
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
+use Hibla\Sql\Exceptions\ConnectionException;
 use Hibla\Sqlite\Interfaces\ConnectionInterface;
 use Hibla\Sqlite\Utilities\ExceptionMapper;
 use Hibla\Sqlite\ValueObjects\SqliteConfig;
@@ -55,7 +56,7 @@ final class SyncConnection implements ConnectionInterface
     {
         $db = $this->db;
         if ($this->closed || $db === null) {
-            return Promise::rejected(ExceptionMapper::map(0, 'Connection closed.'));
+            return Promise::rejected(new ConnectionException('Connection closed.'));
         }
 
         try {
@@ -97,7 +98,7 @@ final class SyncConnection implements ConnectionInterface
     {
         $db = $this->db;
         if ($this->closed || $db === null) {
-            return Promise::rejected(ExceptionMapper::map(0, 'Connection closed.'));
+            return Promise::rejected(new ConnectionException('Connection closed.'));
         }
 
         try {
@@ -118,7 +119,7 @@ final class SyncConnection implements ConnectionInterface
     public function prepare(string $sql): PromiseInterface
     {
         if ($this->closed) {
-            return Promise::rejected(ExceptionMapper::map(0, 'Connection closed.'));
+            return Promise::rejected(new ConnectionException('Connection closed.'));
         }
 
         return Promise::resolved(new PreparedStatement($this, $sql));
@@ -131,7 +132,7 @@ final class SyncConnection implements ConnectionInterface
     {
         $db = $this->db;
         if ($this->closed || $db === null) {
-            return Promise::rejected(ExceptionMapper::map(0, 'Connection closed.'));
+            return Promise::rejected(new ConnectionException('Connection closed.'));
         }
 
         try {
@@ -172,7 +173,7 @@ final class SyncConnection implements ConnectionInterface
     {
         $db = $this->db;
         if ($this->closed || $db === null) {
-            return Promise::rejected(ExceptionMapper::map(0, 'Connection closed.'));
+            return Promise::rejected(new ConnectionException('Connection closed.'));
         }
 
         try {
@@ -183,10 +184,6 @@ final class SyncConnection implements ConnectionInterface
 
             $this->bindParams($sqliteStmt, $params);
             $result = $sqliteStmt->execute();
-
-            if ($result === false) {
-                throw new \RuntimeException('Execution failed.');
-            }
 
             return Promise::resolved(new SyncRowStream($result));
         } catch (\Throwable $e) {
@@ -199,7 +196,7 @@ final class SyncConnection implements ConnectionInterface
      */
     public function ping(): PromiseInterface
     {
-        return $this->closed ? Promise::rejected(ExceptionMapper::map(0, 'Closed')) : Promise::resolved(true);
+        return $this->closed ? Promise::rejected(new ConnectionException('Closed')) : Promise::resolved(true);
     }
 
     /**
@@ -207,11 +204,13 @@ final class SyncConnection implements ConnectionInterface
      */
     public function reset(): PromiseInterface
     {
-        return $this->closed ? Promise::rejected(ExceptionMapper::map(0, 'Closed')) : Promise::resolved(true);
+        return $this->closed ? Promise::rejected(new ConnectionException('Closed')) : Promise::resolved(true);
     }
 
     /**
-     * {@inheritDoc}
+     * Closes the connection and releases underlying daemon or file resources.
+     *
+     * @param bool $killProcess For async connections, whether to forcefully kill the worker tree.
      */
     public function close(bool $killProcess = true): void
     {
@@ -235,6 +234,7 @@ final class SyncConnection implements ConnectionInterface
      */
     public function pause(): void
     {
+        // No-op for sync connections.
     }
 
     /**
@@ -242,6 +242,7 @@ final class SyncConnection implements ConnectionInterface
      */
     public function resume(): void
     {
+        // No-op for sync connections.
     }
 
     /**
