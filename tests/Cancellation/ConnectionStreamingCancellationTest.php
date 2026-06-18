@@ -14,19 +14,25 @@ use function Hibla\delay;
 
 describe('AsyncConnection - Streaming Cancellation', function () {
 
-    it('cancels a queued stream promise before it starts executing (Tier 1)', function () {
+    it('cancels a queued stream before it starts executing (Tier 1)', function () {
         $conn = sqliteConn(['force_sync' => false]);
 
         try {
             $slowPromise = $conn->query(slowCteQuery());
-            $streamPromise = $conn->streamQuery(streamCancelQuery(), 10);
 
-            $streamPromise->cancel();
+            $stream = await($conn->streamQuery(streamCancelQuery(), 10));
+
+            if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
+                $stream->onClose()->catch(function (Throwable $e): void {
+                    // caught
+                });
+            }
+
+            $stream->cancel();
             await($slowPromise);
 
-            expect($streamPromise->isCancelled())->toBeTrue();
-            expect(fn () => await($streamPromise))->toThrow(CancelledException::class);
-
+            expect($stream->isCancelled())->toBeTrue();
+            expect(fn () => iterator_to_array($stream))->toThrow(CancelledException::class);
             $result = await($conn->query('SELECT 42 AS val'));
             expect($result->fetchOne()['val'])->toBe(42);
         } finally {
@@ -191,9 +197,9 @@ describe('SyncConnection - Streaming Cancellation', function (): void {
 
         try {
             $stream = await($conn->streamQuery('SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3'));
-
+            
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (Throwable $e): void {
+                $stream->onClose()->catch(function (\Throwable $e): void {
                 });
             }
 
@@ -212,7 +218,7 @@ describe('SyncConnection - Streaming Cancellation', function (): void {
             }
 
             expect($count)->toBe(2)
-                ->and($threw)->toBeTrue()
+                ->and($threw)->toBeTrue() 
                 ->and($stream->isCancelled())->toBeTrue()
             ;
         } finally {
