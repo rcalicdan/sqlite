@@ -9,7 +9,6 @@ use Hibla\Sql\Exceptions\QueryException;
 use Hibla\Sql\Exceptions\TransactionException;
 use Hibla\Sql\Transaction as TransactionInterface;
 use Hibla\Sql\TransactionOptions;
-use Hibla\Sqlite\Internals\Transaction;
 use Tests\Fixtures\MyCustomServiceException;
 
 use function Hibla\await;
@@ -229,7 +228,7 @@ describe('Transaction - Auto-Managed', function (): void {
         $client = makeClient();
         $attempts = 0;
 
-        $options = TransactionOptions::default()->withAttempts(5); // Non-retryable won't hit this
+        $options = TransactionOptions::default()->withAttempts(5); 
 
         try {
             await($client->transaction(function (TransactionInterface $tx) use (&$attempts) {
