@@ -44,8 +44,7 @@ final class Transaction implements TransactionInterface
         private readonly ConnectionInterface $connection,
         private readonly PoolManager $pool,
         private readonly ?ArrayCache $statementCache = null
-    ) {
-    }
+    ) {}
 
     /**
      * {@inheritDoc}
@@ -75,8 +74,7 @@ final class Transaction implements TransactionInterface
                 });
 
                 return $innerPromise;
-            })
-        ;
+            });
 
         Promise::forwardCancellation($promise, $innerPromise);
 
@@ -130,8 +128,7 @@ final class Transaction implements TransactionInterface
                 });
 
                 return $innerPromise;
-            })
-        ;
+            });
 
         Promise::forwardCancellation($promise, $innerPromise);
 
@@ -151,12 +148,11 @@ final class Transaction implements TransactionInterface
         };
 
         $promise = $innerPromise->then(
-            fn ($stmt) => new TransactionPreparedStatement($stmt, $this->connection, $onStreamError)
+            fn($stmt) => new TransactionPreparedStatement($stmt, $this->connection, $onStreamError)
         );
 
         Promise::forwardCancellation($promise, $innerPromise);
 
-        /** @var PromiseInterface<\Hibla\Sql\PreparedStatement> */
         return $this->trackErrorState($promise);
     }
 
@@ -166,7 +162,7 @@ final class Transaction implements TransactionInterface
     public function execute(string $sql, array $params = []): PromiseInterface
     {
         return Promise::propagateCancellation(
-            $this->query($sql, $params)->then(fn (ResultInterface $r) => $r->affectedRows)
+            $this->query($sql, $params)->then(fn(ResultInterface $r) => $r->affectedRows)
         );
     }
 
@@ -176,7 +172,7 @@ final class Transaction implements TransactionInterface
     public function executeGetId(string $sql, array $params = []): PromiseInterface
     {
         return Promise::propagateCancellation(
-            $this->query($sql, $params)->then(fn (ResultInterface $r) => $r->lastInsertId)
+            $this->query($sql, $params)->then(fn(ResultInterface $r) => $r->lastInsertId)
         );
     }
 
@@ -186,7 +182,7 @@ final class Transaction implements TransactionInterface
     public function fetchOne(string $sql, array $params = []): PromiseInterface
     {
         return Promise::propagateCancellation(
-            $this->query($sql, $params)->then(fn (ResultInterface $r) => $r->fetchOne())
+            $this->query($sql, $params)->then(fn(ResultInterface $r) => $r->fetchOne())
         );
     }
 
@@ -305,7 +301,10 @@ final class Transaction implements TransactionInterface
     {
         $this->ensureActiveAndNotFailed();
 
-        return Promise::propagateCancellation($this->trackErrorState($this->connection->query("SAVEPOINT `{$identifier}`")));
+        return Promise::propagateCancellation(
+            $this->trackErrorState($this->connection->query("SAVEPOINT `{$identifier}`"))
+                ->then(function (): void {})
+        );
     }
 
     /**
@@ -315,10 +314,11 @@ final class Transaction implements TransactionInterface
     {
         $this->ensureActive();
 
-        // Rolling back a savepoint safely recovers the transaction state
         $this->failed = false;
 
-        $promise = $this->connection->query("ROLLBACK TO SAVEPOINT `{$identifier}`")->catch(function (\Throwable $e) {
+        $promise = $this->connection->query("ROLLBACK TO SAVEPOINT `{$identifier}`")
+        ->then(function (): void {})
+        ->catch(function (\Throwable $e) {
             $this->failed = true;
 
             throw $e;
@@ -334,8 +334,13 @@ final class Transaction implements TransactionInterface
     {
         $this->ensureActiveAndNotFailed();
 
-        return Promise::propagateCancellation($this->trackErrorState($this->connection->query("RELEASE SAVEPOINT `{$identifier}`")));
+        return Promise::propagateCancellation(
+            $this->trackErrorState($this->connection->query("RELEASE SAVEPOINT `{$identifier}`"))
+                ->then(function (): void {})
+        );
     }
+
+
 
     /**
      * {@inheritDoc}
@@ -389,7 +394,7 @@ final class Transaction implements TransactionInterface
     private function getCachedStatement(string $sql): PromiseInterface
     {
         if ($this->statementCache === null) {
-            return $this->connection->prepare($sql)->then(fn ($stmt) => [$stmt, false]);
+            return $this->connection->prepare($sql)->then(fn($stmt) => [$stmt, false]);
         }
 
         return $this->statementCache->get($sql)->then(function (mixed $stmt) use ($sql) {

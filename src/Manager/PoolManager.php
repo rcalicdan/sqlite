@@ -128,7 +128,7 @@ final class PoolManager
     }
 
     /**
-     * @return array<string, bool|float|int>
+     * @var array<string, bool|float|int>
      */
     public array $stats {
         get {
