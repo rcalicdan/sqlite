@@ -97,6 +97,7 @@ describe('Transaction - Auto-Managed', function (): void {
 
             $payload = await($client->transaction(function (TransactionInterface $tx) {
                 await($tx->execute("INSERT INTO txn_test VALUES ('auto_val')"));
+
                 return 'return_payload';
             }));
 
@@ -116,9 +117,11 @@ describe('Transaction - Auto-Managed', function (): void {
             await($client->query('CREATE TABLE txn_test (v TEXT)'));
 
             $thrown = false;
+
             try {
                 await($client->transaction(function (TransactionInterface $tx) {
                     await($tx->execute("INSERT INTO txn_test VALUES ('discard_val')"));
+
                     throw new RuntimeException('Intentional rollback');
                 }));
             } catch (RuntimeException $e) {
@@ -145,6 +148,7 @@ describe('Transaction - Auto-Managed', function (): void {
             if ($attempts < 3) {
                 throw new LockWaitTimeoutException('Database is locked (busy)', 5);
             }
+
             return 'recovered_from_lock_timeout';
         }, $options));
 
@@ -166,6 +170,7 @@ describe('Transaction - Auto-Managed', function (): void {
             if ($attempts < 3) {
                 throw new DeadlockException('Deadlock detected', 6);
             }
+
             return 'recovered_from_deadlock';
         }, $options));
 
@@ -182,12 +187,15 @@ describe('Transaction - Auto-Managed', function (): void {
 
         $options = TransactionOptions::default()
             ->withAttempts(3)
-            ->withRetryableExceptions([ConstraintViolationException::class]);
+            ->withRetryableExceptions([ConstraintViolationException::class])
+        ;
 
         $thrown = false;
+
         try {
             await($client->transaction(function (TransactionInterface $tx) use (&$attempts) {
                 $attempts++;
+
                 throw new ConstraintViolationException('UNIQUE constraint failed', 19);
             }, $options));
         } catch (ConstraintViolationException $e) {
@@ -195,7 +203,7 @@ describe('Transaction - Auto-Managed', function (): void {
         }
 
         expect($thrown)->toBeTrue()
-            ->and($attempts)->toBe(1) 
+            ->and($attempts)->toBe(1)
         ;
 
         $client->close();
@@ -207,13 +215,15 @@ describe('Transaction - Auto-Managed', function (): void {
 
         $options = TransactionOptions::default()
             ->withAttempts(3)
-            ->withRetryableExceptions([MyCustomServiceException::class]);
+            ->withRetryableExceptions([MyCustomServiceException::class])
+        ;
 
         $result = await($client->transaction(function (TransactionInterface $tx) use (&$attempts) {
             $attempts++;
             if ($attempts < 3) {
                 throw new MyCustomServiceException('Third party API failed');
             }
+
             return 'recovered_from_third_party';
         }, $options));
 
@@ -228,11 +238,12 @@ describe('Transaction - Auto-Managed', function (): void {
         $client = makeClient();
         $attempts = 0;
 
-        $options = TransactionOptions::default()->withAttempts(5); 
+        $options = TransactionOptions::default()->withAttempts(5);
 
         try {
             await($client->transaction(function (TransactionInterface $tx) use (&$attempts) {
                 $attempts++;
+
                 throw new QueryException('Bad SQL syntax');
             }, $options));
         } catch (QueryException $e) {
@@ -280,7 +291,7 @@ describe('Transaction - Strict Tainting', function (): void {
             }
 
             expect(fn () => await($tx->commit()))
-                ->toThrow(TransactionException::class, 'Transaction aborted due to a previous error') 
+                ->toThrow(TransactionException::class, 'Transaction aborted due to a previous error')
             ;
 
             expect(fn () => await($tx->rollback()))->not->toThrow(Throwable::class);
@@ -409,28 +420,28 @@ describe('Transaction - Event Hooks', function (): void {
 
 describe('Transaction - Lifecycle & GC', function (): void {
 
-   
-    }); it('automatically rolls back and releases connection when the Transaction is garbage collected', function (): void {
-        $client = makeClient(['maxConnections' => 1]);
+   });
+it('automatically rolls back and releases connection when the Transaction is garbage collected', function (): void {
+    $client = makeClient(['maxConnections' => 1]);
 
-        try {
-            await($client->query('CREATE TABLE txn_test (v TEXT)'));
+    try {
+        await($client->query('CREATE TABLE txn_test (v TEXT)'));
 
-            $runGcTest = function () use ($client): void {
-                $tx = await($client->beginTransaction());
-                await($tx->execute("INSERT INTO txn_test VALUES ('uncommitted_gc_data')"));
-            };
+        $runGcTest = function () use ($client): void {
+            $tx = await($client->beginTransaction());
+            await($tx->execute("INSERT INTO txn_test VALUES ('uncommitted_gc_data')"));
+        };
 
-            $runGcTest();
+        $runGcTest();
 
-            gc_collect_cycles();
-            await(delay(0.1));
+        gc_collect_cycles();
+        await(delay(0.1));
 
-            expect($client->stats['active_connections'])->toBe(0);
+        expect($client->stats['active_connections'])->toBe(0);
 
-            $count = await($client->fetchValue('SELECT count(*) FROM txn_test'));
-            expect((int)$count)->toBe(0);
-        } finally {
-            $client->close();
-        }
+        $count = await($client->fetchValue('SELECT count(*) FROM txn_test'));
+        expect((int)$count)->toBe(0);
+    } finally {
+        $client->close();
+    }
 });

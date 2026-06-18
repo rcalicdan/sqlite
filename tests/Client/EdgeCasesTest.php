@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 use Hibla\Promise\Promise;
-use Hibla\Sqlite\Exceptions\NotInitializedException;
-use Hibla\Sqlite\ValueObjects\SqliteConfig;
 
 use function Hibla\await;
 
@@ -137,7 +135,7 @@ describe('SqliteClient - Queue & Concurrency', function () {
         $client = makeClient(['maxConnections' => 1]);
 
         try {
-            $heavyQuery = "WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x < 100) SELECT count(x) AS c FROM cnt;";
+            $heavyQuery = 'WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x < 100) SELECT count(x) AS c FROM cnt;';
 
             $promises = [
                 $client->query($heavyQuery),

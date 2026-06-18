@@ -86,7 +86,7 @@ describe('AsyncConnection - Cancellation', function () {
     it('handles multiple sequential cancellations on the same connection cleanly', function () {
         $config = dbConfig([
             'force_sync' => false,
-            'kill_worker_on_cancel' => false, 
+            'kill_worker_on_cancel' => false,
         ]);
 
         /** @var AsyncConnection $conn */
@@ -101,7 +101,7 @@ describe('AsyncConnection - Cancellation', function () {
             $p2 = $conn->query(slowCteQuery());
             Loop::addTimer(0.1, fn () => $p2->cancel());
             expect(fn () => await($p2))->toThrow(CancelledException::class);
-            await(delay(1.5)); 
+            await(delay(1.5));
 
             $result = await($conn->query('SELECT 123 AS val'));
             expect($result->fetchOne()['val'])->toBe(123);
@@ -113,7 +113,7 @@ describe('AsyncConnection - Cancellation', function () {
     it('rejects all queued queries with ConnectionException when a running query is cancelled with kill_worker_on_cancel enabled', function () {
         $config = dbConfig([
             'force_sync' => false,
-            'kill_worker_on_cancel' => true, 
+            'kill_worker_on_cancel' => true,
         ]);
 
         /** @var AsyncConnection $conn */
@@ -130,7 +130,7 @@ describe('AsyncConnection - Cancellation', function () {
 
             expect(fn () => await($queuedPromise1))->toThrow(ConnectionException::class);
             expect(fn () => await($queuedPromise2))->toThrow(ConnectionException::class);
-            
+
             expect($conn->isClosed())->toBeTrue();
         } finally {
             $conn->close();
@@ -150,6 +150,7 @@ describe('AsyncConnection - Cancellation', function () {
             expect($p1->isCancelled())->toBeFalse();
 
             $p2 = $conn->query('SELECT INVALID SQL');
+
             try {
                 await($p2);
             } catch (QueryException $e) {
@@ -168,7 +169,7 @@ describe('AsyncConnection - Cancellation', function () {
 
         try {
             $slowPromise = $conn->query(slowCteQuery());
-        
+
             $pingPromise = $conn->ping();
             $pingPromise->cancel();
 

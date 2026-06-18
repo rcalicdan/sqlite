@@ -1,7 +1,9 @@
-<?php 
+<?php
 
 declare(strict_types=1);
 
 namespace Tests\Fixtures;
 
-class MyCustomServiceException extends \Exception{}
+class MyCustomServiceException extends \Exception
+{
+}

@@ -92,10 +92,23 @@ function generateHeavyRowsQuery(int $limit = 50000): string
 
 function slowCteQuery(): string
 {
-    return "
+    return '
         WITH RECURSIVE cnt(x) AS (
             SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x < 200
         )
         SELECT sum(a.x + b.x + c.x) FROM cnt a CROSS JOIN cnt b CROSS JOIN cnt c;
+    ';
+}
+
+function streamCancelQuery(): string
+{
+    $ten = 'SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1 UNION ALL SELECT 1';
+
+    return "
+        SELECT 1 AS val FROM 
+            ({$ten}) a CROSS JOIN 
+            ({$ten}) b CROSS JOIN 
+            ({$ten}) c CROSS JOIN 
+            ({$ten}) d;
     ";
 }

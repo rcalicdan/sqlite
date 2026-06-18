@@ -326,6 +326,10 @@ class AsyncConnection implements ConnectionInterface
                 $shouldPause ? $this->pause() : $this->resume();
             };
 
+            $stream->setOnCancel(function () use ($request): void {
+                $this->handleCommandCancellation($request);
+            });
+
             $request->streamContext = $stream;
             $promise->resolve($stream);
         }
@@ -353,7 +357,7 @@ class AsyncConnection implements ConnectionInterface
         }
     }
 
-   private function processNextCommand(): void
+    private function processNextCommand(): void
     {
         if ($this->currentCommand !== null) {
             return;
