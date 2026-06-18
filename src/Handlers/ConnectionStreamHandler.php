@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Sqlite\Handlers;
 
 use Hibla\Sqlite\Internals\AsyncConnection;
-use Hibla\Sqlite\Utilities\ExceptionMapper;
+use Hibla\Sqlite\Utilities\ExceptionHandler;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
 
 /**
@@ -48,10 +48,7 @@ final class ConnectionStreamHandler
         }
 
         if ($response['status'] === 'ERROR') {
-            $errorCode = isset($response['errorCode']) && \is_int($response['errorCode']) ? $response['errorCode'] : 0;
-            $errorMessage = isset($response['errorMessage']) && \is_string($response['errorMessage']) ? $response['errorMessage'] : '';
-
-            $exception = ExceptionMapper::map($errorCode, $errorMessage);
+            $exception = ExceptionHandler::createFromWorkerError($response);
             $stream->error($exception);
             $cmd->promise->reject($exception);
 

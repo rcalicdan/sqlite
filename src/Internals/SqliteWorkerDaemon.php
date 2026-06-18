@@ -118,8 +118,8 @@ final class SqliteWorkerDaemon
     }
 
     /**
-     * @param resource|null $stdout
-     */
+       * @param resource|null $stdout
+      */
     private function writeError(string $id, \Throwable $e, $stdout = null): void
     {
         $target = $stdout ?? STDOUT;
@@ -130,8 +130,12 @@ final class SqliteWorkerDaemon
         $this->writeFrame($target, [
             'id' => $id,
             'status' => 'ERROR',
-            'errorCode' => $e->getCode(),
-            'errorMessage' => $e->getMessage(),
+            'class' => \get_class($e),
+            'message' => $e->getMessage(),
+            'code' => $e->getCode(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'stack_trace' => $e->getTraceAsString(),
         ]);
     }
 }
