@@ -16,7 +16,7 @@ use Hibla\Sqlite\ValueObjects\SqliteConfig;
  *
  * @internal
  */
-final class SyncConnection implements ConnectionInterface
+class SyncConnection implements ConnectionInterface
 {
     private ?\SQLite3 $db = null;
 

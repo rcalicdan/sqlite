@@ -24,7 +24,7 @@ use function Hibla\await;
 /**
  * @internal
  */
-final class AsyncConnection implements ConnectionInterface
+class AsyncConnection implements ConnectionInterface
 {
     /**
      * @var resource|null
