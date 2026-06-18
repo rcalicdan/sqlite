@@ -2,61 +2,39 @@
 
 declare(strict_types=1);
 
+use Hibla\EventLoop\Loop;
 use Hibla\Promise\Exceptions\CancelledException;
 use Hibla\Sql\Exceptions\ConnectionException;
+use Hibla\Sql\Exceptions\QueryException;
 use Hibla\Sqlite\Internals\AsyncConnection;
 use Hibla\Sqlite\Internals\ConnectionFactory;
 
 use function Hibla\await;
 use function Hibla\delay;
 
-function slowCteQuery(): string
-{
-    return "
-        WITH RECURSIVE
-          t1(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM t1 LIMIT 100),
-          t2(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM t2 LIMIT 100),
-          t3(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM t3 LIMIT 100)
-        SELECT count(*) FROM t1 a CROSS JOIN t2 b CROSS JOIN t3 c;
-    ";
-}
-
 describe('AsyncConnection - Cancellation', function () {
 
     it('cancels a queued query before it starts and leaves the connection healthy', function () {
-        fwrite(STDERR, "[TRACE] Starting Test 1 (Queued Cancellation)\n");
         $conn = sqliteConn(['force_sync' => false]);
 
         try {
-            fwrite(STDERR, "[TRACE] Test 1: Sending slow query...\n");
             $slowPromise = $conn->query(slowCteQuery());
-
-            fwrite(STDERR, "[TRACE] Test 1: Enqueuing queued query...\n");
             $queuedPromise = $conn->query('SELECT 42 AS val');
 
-            fwrite(STDERR, "[TRACE] Test 1: Cancelling queued query...\n");
             $queuedPromise->cancel();
-
-            fwrite(STDERR, "[TRACE] Test 1: Awaiting slow query...\n");
             await($slowPromise);
-            fwrite(STDERR, "[TRACE] Test 1: Slow query finished.\n");
 
             expect($queuedPromise->isCancelled())->toBeTrue();
             expect(fn () => await($queuedPromise))->toThrow(CancelledException::class);
 
-            fwrite(STDERR, "[TRACE] Test 1: Sending cleanup verification query...\n");
             $result = await($conn->query('SELECT 99 AS ok'));
             expect($result->fetchOne()['ok'])->toBe(99);
-            fwrite(STDERR, "[TRACE] Test 1: Cleanup query finished.\n");
         } finally {
-            fwrite(STDERR, "[TRACE] Test 1: Closing connection...\n");
             $conn->close();
-            fwrite(STDERR, "[TRACE] Test 1: Finished.\n");
         }
     });
 
     it('tears down the connection and kills the worker process when an active query is cancelled with kill_worker_on_cancel enabled', function () {
-        fwrite(STDERR, "[TRACE] Starting Test 2 (Active Cancel, killWorker=true)\n");
         $config = dbConfig([
             'force_sync' => false,
             'kill_worker_on_cancel' => true,
@@ -65,35 +43,22 @@ describe('AsyncConnection - Cancellation', function () {
         /** @var AsyncConnection $conn */
         $conn = await(ConnectionFactory::create($config));
 
-        fwrite(STDERR, "[TRACE] Test 2: Sending slow query...\n");
-        $slowPromise = $conn->query(slowCteQuery());
-
-        fwrite(STDERR, "[TRACE] Test 2: Waiting 50ms before cancel...\n");
-        await(delay(0.05));
-        
-        fwrite(STDERR, "[TRACE] Test 2: Cancelling active query...\n");
-        $slowPromise->cancel();
-
-        fwrite(STDERR, "[TRACE] Test 2: Awaiting cancelled query promise...\n");
-        $thrown = false;
         try {
-            await($slowPromise);
-        } catch (ConnectionException|CancelledException $e) {
-            $thrown = true;
-            fwrite(STDERR, "[TRACE] Test 2: Caught expected rejection: " . get_class($e) . " - " . $e->getMessage() . "\n");
+            $slowPromise = $conn->query(slowCteQuery());
+
+            Loop::addTimer(0.1, function () use ($slowPromise) {
+                $slowPromise->cancel();
+            });
+
+            expect(fn () => await($slowPromise))->toThrow(CancelledException::class);
+            expect($conn->isClosed())->toBeTrue();
+        } finally {
+            $conn->close();
+            await(delay(0.1));
         }
-
-        expect($thrown)->toBeTrue()
-            ->and($conn->isClosed())->toBeTrue()
-        ;
-
-        fwrite(STDERR, "[TRACE] Test 2: Closing connection...\n");
-        $conn->close();
-        fwrite(STDERR, "[TRACE] Test 2: Finished.\n");
     });
 
     it('does NOT kill the worker process when an active query is cancelled with kill_worker_on_cancel disabled (default)', function () {
-        fwrite(STDERR, "[TRACE] Starting Test 3 (Active Cancel, killWorker=false)\n");
         $config = dbConfig([
             'force_sync' => false,
             'kill_worker_on_cancel' => false,
@@ -102,37 +67,131 @@ describe('AsyncConnection - Cancellation', function () {
         /** @var AsyncConnection $conn */
         $conn = await(ConnectionFactory::create($config));
 
-        fwrite(STDERR, "[TRACE] Test 3: Sending slow query...\n");
-        $slowPromise = $conn->query(slowCteQuery());
+        try {
+            $slowPromise = $conn->query(slowCteQuery());
 
-        fwrite(STDERR, "[TRACE] Test 3: Waiting 50ms before cancel...\n");
-        await(delay(0.05));
+            Loop::addTimer(0.1, function () use ($slowPromise) {
+                $slowPromise->cancel();
+            });
+
+            expect(fn () => await($slowPromise))->toThrow(CancelledException::class);
+            expect($conn->isClosed())->toBeFalse();
+
+            await(delay(1.5));
+        } finally {
+            $conn->close();
+        }
+    });
+
+    it('handles multiple sequential cancellations on the same connection cleanly', function () {
+        $config = dbConfig([
+            'force_sync' => false,
+            'kill_worker_on_cancel' => false, 
+        ]);
+
+        /** @var AsyncConnection $conn */
+        $conn = await(ConnectionFactory::create($config));
+
+        try {
+            $p1 = $conn->query(slowCteQuery());
+            Loop::addTimer(0.1, fn () => $p1->cancel());
+            expect(fn () => await($p1))->toThrow(CancelledException::class);
+            await(delay(1.5));
+
+            $p2 = $conn->query(slowCteQuery());
+            Loop::addTimer(0.1, fn () => $p2->cancel());
+            expect(fn () => await($p2))->toThrow(CancelledException::class);
+            await(delay(1.5)); 
+
+            $result = await($conn->query('SELECT 123 AS val'));
+            expect($result->fetchOne()['val'])->toBe(123);
+        } finally {
+            $conn->close();
+        }
+    });
+
+    it('rejects all queued queries with ConnectionException when a running query is cancelled with kill_worker_on_cancel enabled', function () {
+        $config = dbConfig([
+            'force_sync' => false,
+            'kill_worker_on_cancel' => true, 
+        ]);
+
+        /** @var AsyncConnection $conn */
+        $conn = await(ConnectionFactory::create($config));
+
+        try {
+            $slowPromise = $conn->query(slowCteQuery());
+            $queuedPromise1 = $conn->query('SELECT 1');
+            $queuedPromise2 = $conn->query('SELECT 2');
+
+            Loop::addTimer(0.1, fn () => $slowPromise->cancel());
+
+            expect(fn () => await($slowPromise))->toThrow(CancelledException::class);
+
+            expect(fn () => await($queuedPromise1))->toThrow(ConnectionException::class);
+            expect(fn () => await($queuedPromise2))->toThrow(ConnectionException::class);
+            
+            expect($conn->isClosed())->toBeTrue();
+        } finally {
+            $conn->close();
+            await(delay(0.1));
+        }
+    });
+
+    it('ignores cancel() on already-resolved or already-failed queries', function () {
+        $conn = sqliteConn(['force_sync' => false]);
+
+        try {
+            $p1 = $conn->query('SELECT 100 AS val');
+            $result1 = await($p1);
+            expect($result1->fetchOne()['val'])->toBe(100);
+
+            $p1->cancel();
+            expect($p1->isCancelled())->toBeFalse();
+
+            $p2 = $conn->query('SELECT INVALID SQL');
+            try {
+                await($p2);
+            } catch (QueryException $e) {
+                // caught
+            }
+
+            $p2->cancel();
+            expect($p2->isCancelled())->toBeFalse();
+        } finally {
+            $conn->close();
+        }
+    });
+
+    it('cancels a queued ping() command safely', function () {
+        $conn = sqliteConn(['force_sync' => false]);
+
+        try {
+            $slowPromise = $conn->query(slowCteQuery());
         
-        fwrite(STDERR, "[TRACE] Test 3: Cancelling active query...\n");
-        $slowPromise->cancel();
+            $pingPromise = $conn->ping();
+            $pingPromise->cancel();
 
-        expect($slowPromise->isCancelled())->toBeTrue();
-        expect($conn->isClosed())->toBeFalse();
+            await($slowPromise);
 
-        fwrite(STDERR, "[TRACE] Test 3: Waiting 0.5s for background query to settle...\n");
-        await(delay(0.5));
-        fwrite(STDERR, "[TRACE] Test 3: Delay finished.\n");
+            expect($pingPromise->isCancelled())->toBeTrue();
+            expect(fn () => await($pingPromise))->toThrow(CancelledException::class);
 
-        fwrite(STDERR, "[TRACE] Test 3: Closing connection...\n");
-        $conn->close();
-        fwrite(STDERR, "[TRACE] Test 3: Finished.\n");
+            $ok = await($conn->ping());
+            expect($ok)->toBeTrue();
+        } finally {
+            $conn->close();
+        }
     });
 });
 
 describe('SyncConnection - Cancellation', function (): void {
 
     it('confirms SyncConnection is unaffected by cancellation tests due to its blocking nature', function (): void {
-        fwrite(STDERR, "[TRACE] Starting Test 4 (Sync Connection Cancellation)\n");
         $conn = sqliteConn(['force_sync' => true]);
 
         try {
             $promise = $conn->query('SELECT 1 AS ok');
-
             $promise->cancel();
 
             expect($promise->isCancelled())->toBeFalse();
@@ -141,7 +200,6 @@ describe('SyncConnection - Cancellation', function (): void {
             expect($result->fetchOne()['ok'])->toBe(1);
         } finally {
             $conn->close();
-            fwrite(STDERR, "[TRACE] Test 4: Finished.\n");
         }
     });
 });
