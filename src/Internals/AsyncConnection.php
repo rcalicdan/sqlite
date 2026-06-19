@@ -8,6 +8,7 @@ use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\ConnectionException;
 use Hibla\Sqlite\Handlers\ConnectionQueryHandler;
+use Hibla\Sqlite\Handlers\ConnectionResetHandler;
 use Hibla\Sqlite\Handlers\ConnectionStreamHandler;
 use Hibla\Sqlite\Handlers\JsonIpcFrameHandler;
 use Hibla\Sqlite\Interfaces\ConnectionInterface;
@@ -60,6 +61,8 @@ class AsyncConnection implements ConnectionInterface
 
     private readonly ConnectionStreamHandler $streamHandler;
 
+    private readonly ConnectionResetHandler $resetHandler;
+
     /**
      * @param SqliteConfig|array<string, mixed>|string $config
      */
@@ -74,6 +77,7 @@ class AsyncConnection implements ConnectionInterface
         $this->commandQueue = new SplQueue();
         $this->queryHandler = new ConnectionQueryHandler($this);
         $this->streamHandler = new ConnectionStreamHandler($this);
+        $this->resetHandler = new ConnectionResetHandler($this);
     }
 
     /**
@@ -258,7 +262,7 @@ class AsyncConnection implements ConnectionInterface
             return Promise::rejected(new ConnectionException('Connection is closed.'));
         }
 
-        return Promise::resolved(true);
+        return $this->enqueueCommand(CommandRequest::TYPE_RESET, '');
     }
 
     /**
@@ -394,6 +398,8 @@ class AsyncConnection implements ConnectionInterface
 
         if ($isStream) {
             $this->streamHandler->start($command);
+        } elseif ($cmdType === CommandRequest::TYPE_RESET) {
+            $this->resetHandler->start($command);
         } else {
             $this->queryHandler->start($command);
         }
@@ -408,11 +414,15 @@ class AsyncConnection implements ConnectionInterface
     {
         if ($this->currentCommand !== null && isset($response['id']) && $response['id'] === $this->currentCommand->id) {
             $cmdType = $this->currentCommand->type;
-            $isStream = ($cmdType === CommandRequest::TYPE_STREAM_QUERY || $cmdType === CommandRequest::TYPE_EXECUTE_STREAM);
 
-            $isFinished = $isStream
-                ? $this->streamHandler->handleResponse($response, $this->currentCommand)
-                : $this->queryHandler->handleResponse($response, $this->currentCommand);
+            if ($cmdType === CommandRequest::TYPE_RESET) {
+                $isFinished = $this->resetHandler->handleResponse($response, $this->currentCommand);
+            } else {
+                $isStream = ($cmdType === CommandRequest::TYPE_STREAM_QUERY || $cmdType === CommandRequest::TYPE_EXECUTE_STREAM);
+                $isFinished = $isStream
+                    ? $this->streamHandler->handleResponse($response, $this->currentCommand)
+                    : $this->queryHandler->handleResponse($response, $this->currentCommand);
+            }
 
             if ($isFinished) {
                 $this->currentCommand = null;

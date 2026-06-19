@@ -204,7 +204,18 @@ class SyncConnection implements ConnectionInterface
      */
     public function reset(): PromiseInterface
     {
-        return $this->closed ? Promise::rejected(new ConnectionException('Closed')) : Promise::resolved(true);
+        $db = $this->db;
+        if ($this->closed || $db === null) {
+            return Promise::rejected(new ConnectionException('Closed'));
+        }
+
+        try {
+            StateResetter::execute($db, $this->config);
+
+            return Promise::resolved(true);
+        } catch (\Throwable $e) {
+            return Promise::rejected(ExceptionMapper::map((int) $e->getCode(), $e->getMessage()));
+        }
     }
 
     /**

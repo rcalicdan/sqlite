@@ -19,6 +19,7 @@ use SplQueue;
 use Throwable;
 
 use function Hibla\async;
+use function Hibla\await;
 use function Hibla\sleep;
 
 /**
@@ -503,8 +504,8 @@ final class PoolManager
     }
 
     /**
-     * @return PromiseInterface<ConnectionInterface>
-     */
+       * @return PromiseInterface<ConnectionInterface>
+       */
     private function runOnConnectHook(ConnectionInterface $connection): PromiseInterface
     {
         if ($this->onConnect === null) {
@@ -513,8 +514,19 @@ final class PoolManager
 
         $setup = new ConnectionSetup($connection);
 
-        /** @var PromiseInterface<ConnectionInterface> */
-        return async(fn () => ($this->onConnect)($setup))->then(fn () => $connection);
+        try {
+            return async(function () use ($setup, $connection) {
+                $result = ($this->onConnect)($setup);
+
+                if ($result instanceof PromiseInterface) {
+                    await($result);
+                }
+
+                return $connection;
+            });
+        } catch (Throwable $e) {
+            return Promise::rejected($e);
+        }
     }
 
     private function resetAndRelease(ConnectionInterface $connection): void

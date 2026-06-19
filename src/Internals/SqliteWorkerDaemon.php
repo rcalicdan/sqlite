@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Sqlite\Internals;
 
 use Hibla\Sqlite\Handlers\DaemonQueryHandler;
+use Hibla\Sqlite\Handlers\DaemonResetHandler;
 use Hibla\Sqlite\Handlers\DaemonStreamHandler;
 use Hibla\Sqlite\ValueObjects\SqliteConfig;
 
@@ -50,9 +51,10 @@ final class SqliteWorkerDaemon
 
         $queryHandler = new DaemonQueryHandler($this->db, $stdout);
         $streamHandler = new DaemonStreamHandler($this->db, $stdout);
+        $resetHandler = new DaemonResetHandler($this->db, $stdout, $this->config);
 
         $requestCount = 0;
-        $memoryLimitBytes = 128 * 1024 * 1024; // 128 MB safety threshold
+        $memoryLimitBytes = $this->config->memoryLimitMB * 1024 * 1024;
 
         while (($line = fgets($stdin)) !== false) {
             $line = trim($line);
@@ -85,6 +87,11 @@ final class SqliteWorkerDaemon
 
                         break;
 
+                    case 'reset':
+                        $resetHandler->handle($request);
+
+                        break;
+
                     default:
                         throw new \RuntimeException('Unknown command: ' . $cmd);
                 }
@@ -95,7 +102,7 @@ final class SqliteWorkerDaemon
             // Enterprise Stability: Memory Management
             $requestCount++;
 
-            // Run GC every 1,000 queries to clean up cyclic references
+            //  Run GC every 1,000 queries to clean up cyclic references
             if ($requestCount % 1000 === 0) {
                 gc_collect_cycles();
 

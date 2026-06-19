@@ -14,6 +14,8 @@ final readonly class SqliteConfig
      * @param bool $killWorkerOnCancel Whether to forcefully kill the SQLite worker daemon if a query promise is cancelled. Defaults to false.
      * @param int $connectTimeout Compatibility with pool interfaces (seconds).
      * @param bool $forceSync Force synchronous execution, bypassing IPC workers entirely.
+     * @param bool $resetConnection Whether to send DISCARD ALL equivalent on release to clear session state.
+     * @param int $memoryLimitMB Maximum memory a worker daemon can consume before auto-restarting (defaults to 128 MB).
      */
     public function __construct(
         public string $database,
@@ -24,6 +26,7 @@ final readonly class SqliteConfig
         public int $connectTimeout = 10,
         public bool $forceSync = false,
         public bool $resetConnection = false,
+        public int $memoryLimitMB = 128,
     ) {
         if ($this->busyTimeout < 0) {
             throw new \InvalidArgumentException('busyTimeout must be greater than or equal to zero.');
@@ -63,6 +66,9 @@ final readonly class SqliteConfig
         $resetConnection = $config['reset_connection'] ?? false;
         $resetConnection = \is_scalar($resetConnection) ? (bool) $resetConnection : false;
 
+        $memoryLimitMB = $config['memory_limit_mb'] ?? 128;
+        $memoryLimitMB = \is_numeric($memoryLimitMB) ? (int) $memoryLimitMB : 128;
+
         return new self(
             database: $database,
             busyTimeout: $busyTimeout,
@@ -71,7 +77,8 @@ final readonly class SqliteConfig
             killWorkerOnCancel: $killWorkerOnCancel,
             connectTimeout: $connectTimeout,
             forceSync: $forceSync,
-            resetConnection: $resetConnection
+            resetConnection: $resetConnection,
+            memoryLimitMB: $memoryLimitMB
         );
     }
 
@@ -142,6 +149,7 @@ final readonly class SqliteConfig
             killWorkerOnCancel: isset($query['kill_worker_on_cancel']) && \is_scalar($query['kill_worker_on_cancel']) ? filter_var($query['kill_worker_on_cancel'], FILTER_VALIDATE_BOOLEAN) : false,
             forceSync: isset($query['force_sync']) && \is_scalar($query['force_sync']) ? filter_var($query['force_sync'], FILTER_VALIDATE_BOOLEAN) : false,
             resetConnection: isset($query['reset_connection']) && \is_scalar($query['reset_connection']) ? filter_var($query['reset_connection'], FILTER_VALIDATE_BOOLEAN) : false,
+            memoryLimitMB: isset($query['memory_limit_mb']) && \is_numeric($query['memory_limit_mb']) ? (int) $query['memory_limit_mb'] : 128, // <-- Read memory_limit_mb
         );
     }
 }

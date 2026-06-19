@@ -341,9 +341,8 @@ describe('PoolManager - Health Check', function (): void {
     });
 });
 
-describe('PoolManager - Connection Reset Hooks', function (): void {
-
-    it('drops the connection and satisfies next waiter with a fresh connection if hook fails on reset', function (): void {
+describe('PoolManager - Connection Reset', function (): void {
+    it('drops the connection and satisfies the next waiter if the reset hook fails', function (): void {
         $attempts = 0;
         $pool = makePool([
             'maxSize' => 1,
@@ -362,13 +361,18 @@ describe('PoolManager - Connection Reset Hooks', function (): void {
 
             $pool->release($conn);
 
-            await(delay(0.5));
+            await(delay(0.2));
+
             expect($pool->stats['total_connections'])->toBe(0);
 
             $conn2 = await($pool->get());
             expect($attempts)->toBe(3);
 
             $pool->release($conn2);
+
+            $conn = null;
+            $conn2 = null;
+            gc_collect_cycles();
         } finally {
             $pool->close();
         }

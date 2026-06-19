@@ -18,6 +18,7 @@ describe('SqliteConfig', function (): void {
                 ->and($config->connectTimeout)->toBe(10)
                 ->and($config->forceSync)->toBeFalse()
                 ->and($config->resetConnection)->toBeFalse()
+                ->and($config->memoryLimitMB)->toBe(128)
             ;
         });
 
@@ -39,6 +40,7 @@ describe('SqliteConfig', function (): void {
                 'connect_timeout' => '15',
                 'force_sync' => true,
                 'reset_connection' => '1',
+                'memory_limit_mb' => '64',
             ]);
 
             expect($config->database)->toBe('/app/prod.db')
@@ -48,20 +50,8 @@ describe('SqliteConfig', function (): void {
                 ->and($config->killWorkerOnCancel)->toBeTrue()
                 ->and($config->connectTimeout)->toBe(15)
                 ->and($config->forceSync)->toBeTrue()
-                ->and($config->resetConnection)->toBeTrue() // Validates our fix!
-            ;
-        });
-
-        it('applies standard defaults for missing optional array properties', function (): void {
-            $config = SqliteConfig::fromArray([
-                'database' => ':memory:',
-            ]);
-
-            expect($config->database)->toBe(':memory:')
-                ->and($config->busyTimeout)->toBe(5000)
-                ->and($config->journalMode)->toBe('WAL')
-                ->and($config->foreignKeys)->toBeTrue()
-                ->and($config->killWorkerOnCancel)->toBeFalse()
+                ->and($config->resetConnection)->toBeTrue()
+                ->and($config->memoryLimitMB)->toBe(64)
             ;
         });
 
@@ -80,7 +70,7 @@ describe('SqliteConfig', function (): void {
 
     describe('fromUri() Parsing (DSN String)', function (): void {
         it('parses a standard SQLite URI correctly', function (): void {
-            $uri = 'sqlite:///:memory:?busy_timeout=1000&journal_mode=MEMORY&foreign_keys=false&kill_worker_on_cancel=true&force_sync=true&reset_connection=true';
+            $uri = 'sqlite:///:memory:?busy_timeout=1000&journal_mode=MEMORY&foreign_keys=false&kill_worker_on_cancel=true&force_sync=true&reset_connection=true&memory_limit_mb=32';
             $config = SqliteConfig::fromUri($uri);
 
             expect($config->database)->toBe(':memory:')
@@ -90,6 +80,7 @@ describe('SqliteConfig', function (): void {
                 ->and($config->killWorkerOnCancel)->toBeTrue()
                 ->and($config->forceSync)->toBeTrue()
                 ->and($config->resetConnection)->toBeTrue()
+                ->and($config->memoryLimitMB)->toBe(32)
             ;
         });
 
