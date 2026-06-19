@@ -78,6 +78,7 @@ final class SyncRowStream implements RowStreamInterface
 
                 yield $row;
 
+                // @phpstan-ignore-next-line (The $this->cancelled state can be mutated asynchronously by other Fibers during the yield suspension)
                 if ($this->cancelled) {
                     throw new CancelledException('Stream was cancelled.');
                 }

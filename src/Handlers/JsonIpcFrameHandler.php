@@ -47,6 +47,8 @@ final class JsonIpcFrameHandler
                     if (\is_array($response)) {
                         // Successful decode: clear the buffer for the next frame
                         $buffer = '';
+
+                        /** @var array<string, mixed> $response */
                         $this->connection->handleIpcFrame($response);
                     } else {
                         // If decoding fails, it might be a truncated chunk OR malformed garbage.

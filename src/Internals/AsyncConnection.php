@@ -130,7 +130,12 @@ class AsyncConnection implements ConnectionInterface
 
                 $promise->resolve($this);
 
-                $ipcHandler = new JsonIpcFrameHandler($this, $this->stdout);
+                $stdout = $this->stdout;
+                if ($stdout === null) {
+                    throw new ConnectionException('Failed to retrieve STDOUT stream.');
+                }
+
+                $ipcHandler = new JsonIpcFrameHandler($this, $stdout);
                 $ipcHandler->start();
             } catch (\Throwable $e) {
                 $promise->reject(new ConnectionException('Failed to establish raw SQLite process connection.', 0, $e));
@@ -255,6 +260,8 @@ class AsyncConnection implements ConnectionInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @return PromiseInterface<bool>
      */
     public function reset(): PromiseInterface
     {
@@ -262,7 +269,8 @@ class AsyncConnection implements ConnectionInterface
             return Promise::rejected(new ConnectionException('Connection is closed.'));
         }
 
-        return $this->enqueueCommand(CommandRequest::TYPE_RESET, '');
+        return $this->enqueueCommand(CommandRequest::TYPE_RESET, '')
+            ->then(static fn () => true);
     }
 
     /**
