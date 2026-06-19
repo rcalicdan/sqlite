@@ -325,7 +325,7 @@ describe('PoolManager - Health Check', function (): void {
                 ->and($pool->stats['active_connections'])->toBe(1)
             ;
 
-            await(delay(0.1));
+            await(delay(0.5));
 
             $check = await($pool->healthCheck());
 
