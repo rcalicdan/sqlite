@@ -34,6 +34,7 @@ final class SqliteWorkerDaemon
             $fkFlag = $this->config->foreignKeys ? 'ON' : 'OFF';
             $this->db->exec("PRAGMA foreign_keys = {$fkFlag}");
         } catch (\Throwable $e) {
+            fwrite(STDERR, "[WORKER FATAL] Init failed: " . $e->getMessage() . "\n");
             $this->writeError('init', $e);
             exit(1);
         }
@@ -42,6 +43,7 @@ final class SqliteWorkerDaemon
         $stdout = fopen('php://stdout', 'w');
 
         if (! \is_resource($stdin) || ! \is_resource($stdout)) {
+            fwrite(STDERR, "[WORKER FATAL] Could not open STDIN/STDOUT\n");
             exit(1);
         }
 
@@ -55,17 +57,22 @@ final class SqliteWorkerDaemon
         $requestCount = 0;
         $memoryLimitBytes = $this->config->memoryLimitMB * 1024 * 1024;
 
+        fwrite(STDERR, "[WORKER] Booted successfully. Entering select loop...\n");
+
         while (true) {
             $read = [$stdin];
             $write = null;
             $except = null;
 
-            // Block indefinitely until there is data to read, immune to O_NONBLOCK OS interference
-            if (@stream_select($read, $write, $except, null) === false) {
-                break;
+            $changed = @stream_select($read, $write, $except, null);
+
+            if ($changed === false) {
+                fwrite(STDERR, "[WORKER] stream_select returned false (signal interrupt?).\n");
+                continue;
             }
 
             if (feof($stdin)) {
+                fwrite(STDERR, "[WORKER] feof(stdin) is true immediately after select.\n");
                 break;
             }
 
@@ -73,9 +80,10 @@ final class SqliteWorkerDaemon
 
             if ($line === false) {
                 if (feof($stdin)) {
+                    fwrite(STDERR, "[WORKER] fgets returned false and feof is true. Exiting loop.\n");
                     break;
                 }
-                // Non-blocking false alarm, loop again
+                fwrite(STDERR, "[WORKER] fgets returned false but feof is false. Looping.\n");
                 continue;
             }
 
@@ -84,8 +92,11 @@ final class SqliteWorkerDaemon
                 continue;
             }
 
+            fwrite(STDERR, "[WORKER] Received payload: " . substr($line, 0, 80) . "...\n");
+
             $request = json_decode($line, true);
             if (! \is_array($request)) {
+                fwrite(STDERR, "[WORKER] Failed to decode JSON!\n");
                 continue;
             }
 
@@ -97,6 +108,7 @@ final class SqliteWorkerDaemon
             }
 
             try {
+                fwrite(STDERR, "[WORKER] Executing command: {$cmd}\n");
                 switch ($cmd) {
                     case 'query':
                     case 'execute':
@@ -111,7 +123,9 @@ final class SqliteWorkerDaemon
                     default:
                         throw new \RuntimeException('Unknown command: ' . $cmd);
                 }
+                fwrite(STDERR, "[WORKER] Command {$cmd} completed successfully.\n");
             } catch (\Throwable $e) {
+                fwrite(STDERR, "[WORKER ERROR] Command failed: " . $e->getMessage() . "\n");
                 $this->writeError($id, $e, $stdout);
             }
 
@@ -119,13 +133,15 @@ final class SqliteWorkerDaemon
             if ($requestCount % 1000 === 0) {
                 gc_collect_cycles();
                 if (memory_get_usage() > $memoryLimitBytes) {
+                    fwrite(STDERR, "[WORKER] Memory limit exceeded, exiting naturally.\n");
                     $this->db->close();
                     exit(0);
                 }
             }
         }
-    }
 
+        fwrite(STDERR, "[WORKER] Process terminating.\n");
+    }
     /**
      * @param resource $stdout
      * @param array<string, mixed> $data

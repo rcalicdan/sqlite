@@ -92,11 +92,12 @@ function generateHeavyRowsQuery(int $limit = 50000): string
 
 function slowCteQuery(): string
 {
+    // A CPU-heavy, memory-light query to simulate a slow transaction
     return '
         WITH RECURSIVE cnt(x) AS (
-            SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x < 50
+            SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x < 500000
         )
-        SELECT sum(a.x + b.x + c.x) FROM cnt a CROSS JOIN cnt b CROSS JOIN cnt c;
+        SELECT max(x) FROM cnt;
     ';
 }
 
