@@ -163,6 +163,8 @@ final class SqliteRowStream implements RowStreamInterface
         /** @var SplQueue<array<string, mixed>> $buffer */
         $buffer = new SplQueue();
         $this->buffer = $buffer;
+
+        $this->resumeConnection();
     }
 
     /**
@@ -206,7 +208,6 @@ final class SqliteRowStream implements RowStreamInterface
         }
 
         $this->completed = true;
-        $this->backpressureHandler = null;
 
         if ($this->waiter !== null) {
             $waiter = $this->waiter;
@@ -217,6 +218,8 @@ final class SqliteRowStream implements RowStreamInterface
         if ($this->closePromise->isPending()) {
             $this->closePromise->resolve(null);
         }
+
+        $this->resumeConnection();
     }
 
     public function error(\Throwable $e): void
@@ -237,10 +240,23 @@ final class SqliteRowStream implements RowStreamInterface
         if ($this->closePromise->isPending()) {
             $this->closePromise->reject($e);
         }
+
+        $this->resumeConnection();
     }
 
     public function setOnCancel(\Closure $onCancel): void
     {
         $this->onCancel = $onCancel;
+    }
+
+    /**
+     * Safely resumes the connection backpressure loop and clears the handler.
+     */
+    private function resumeConnection(): void
+    {
+        if ($this->backpressureHandler !== null) {
+            ($this->backpressureHandler)(false);
+            $this->backpressureHandler = null;
+        }
     }
 }

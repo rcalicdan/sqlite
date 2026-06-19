@@ -94,8 +94,19 @@ final class Transaction implements TransactionInterface
 
         if (\count($params) === 0) {
             $promise = $this->connection->streamQuery($sql, $bufferSize);
+
+            $promise->onCancel(function (): void {
+                $this->failed = true;
+            });
+
             $tracked = $this->trackErrorState($promise)->then(function (RowStreamInterface $stream): RowStreamInterface {
                 if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
+                    if (method_exists($stream, 'setOnCancel')) {
+                        $stream->setOnCancel(function (): void {
+                            $this->failed = true;
+                        });
+                    }
+
                     $closePromise = $stream->onClose();
                     $closePromise->catch(static fn () => null);
                     $closePromise->catch(function (): void {
@@ -110,25 +121,34 @@ final class Transaction implements TransactionInterface
         }
 
         $innerPromise = null;
+
         $promise = $this->getCachedStatement($sql)
             ->then(function (array $result) use ($params, $bufferSize, &$innerPromise) {
                 /** @var PreparedStatement $stmt */
                 [$stmt, $isCached] = $result;
 
-                $innerPromise = $stmt->executeStream($params, $bufferSize)->then(function (RowStreamInterface $stream) use ($stmt, $isCached): RowStreamInterface {
-                    if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                        $closePromise = $stream->onClose();
-                        $closePromise->catch(function (\Throwable $e): void {
-                            $this->failed = true;
-                        });
+                $innerPromise = $stmt->executeStream($params, $bufferSize)
+                    ->then(function (RowStreamInterface $stream) use ($stmt, $isCached): RowStreamInterface {
+                        if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
+                            if (method_exists($stream, 'setOnCancel')) {
+                                $stream->setOnCancel(function (): void {
+                                    $this->failed = true;
+                                });
+                            }
 
-                        if (! $isCached) {
-                            $closePromise->finally($stmt->close(...));
+                            $closePromise = $stream->onClose();
+                            $closePromise->catch(function (): void {
+                                $this->failed = true;
+                            });
+
+                            if (! $isCached) {
+                                $closePromise->finally($stmt->close(...));
+                            }
                         }
-                    }
 
-                    return $stream;
-                });
+                        return $stream;
+                    })
+                ;
 
                 return $innerPromise;
             })

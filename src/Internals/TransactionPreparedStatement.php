@@ -28,7 +28,7 @@ final class TransactionPreparedStatement implements PreparedStatementInterface
     public function __construct(
         private readonly PreparedStatementInterface $statement,
         private readonly ConnectionInterface $connection,
-        private readonly ?\Closure $onStreamError = null,
+        private readonly ?\Closure $onError = null,
     ) {
     }
 
@@ -39,7 +39,18 @@ final class TransactionPreparedStatement implements PreparedStatementInterface
      */
     public function execute(array $params = []): PromiseInterface
     {
-        return Promise::propagateCancellation($this->statement->execute($params));
+        $promise = $this->statement->execute($params);
+
+        if ($this->onError !== null) {
+            $promise->onCancel($this->onError);
+            $promise->catch(function (\Throwable $e): void {
+                ($this->onError)();
+
+                throw $e;
+            });
+        }
+
+        return Promise::propagateCancellation($promise);
     }
 
     /**
@@ -51,15 +62,26 @@ final class TransactionPreparedStatement implements PreparedStatementInterface
     {
         $promise = $this->statement->executeStream($params, $bufferSize);
 
-        if ($this->onStreamError !== null) {
-            $onStreamError = $this->onStreamError;
+        if ($this->onError !== null) {
+            $onError = $this->onError;
+
+            $promise->onCancel($onError);
+            $promise->catch(function (\Throwable $e) use ($onError): void {
+                $onError();
+
+                throw $e;
+            });
 
             $promise = $promise->then(
-                function (RowStreamInterface $stream) use ($onStreamError): RowStreamInterface {
+                function (RowStreamInterface $stream) use ($onError): RowStreamInterface {
                     if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
+                        if (method_exists($stream, 'setOnCancel')) {
+                            $stream->setOnCancel($onError);
+                        }
+
                         $closePromise = $stream->onClose();
-                        $closePromise->catch(static function () use ($onStreamError): void {
-                            $onStreamError();
+                        $closePromise->catch(static function () use ($onError): void {
+                            $onError();
                         });
                     }
 

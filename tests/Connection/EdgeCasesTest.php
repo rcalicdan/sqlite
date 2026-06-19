@@ -466,4 +466,88 @@ describe('SyncConnection - Edge Cases', function () {
             $conn->close();
         }
     });
+
+    it('handles large prepared statement payloads (10MB) safely over the IPC pipe without truncation', function () {
+        $conn = sqliteConn(['force_sync' => false]);
+
+        try {
+            await($conn->query('
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+            '));
+
+            $insertStmt = await($conn->prepare('
+                INSERT INTO users (username, payload) VALUES (:username, :payload)
+            '));
+
+            $targetSize = 10 * 1024 * 1024;
+            $largeString = str_repeat('abcdefghij', (int) ($targetSize / 10));
+
+            $result = await($insertStmt->execute([
+                'username' => 'massive_user',
+                'payload' => $largeString,
+            ]));
+
+            expect($result->affectedRows)->toBe(1)
+                ->and($result->lastInsertId)->toBe(1)
+            ;
+
+            $selectStmt = await($conn->prepare('SELECT payload FROM users WHERE username = :search'));
+            $selectResult = await($selectStmt->execute(['search' => 'massive_user']));
+            $row = $selectResult->fetchOne();
+            expect($row)->not->toBeNull()
+                ->and($row['payload'])->toBeString()
+            ;
+
+            $retrievedLength = strlen($row['payload']);
+            expect($retrievedLength)->toBe($targetSize)
+                ->and($row['payload'])->toBe($largeString)
+            ;
+
+            await($insertStmt->close());
+            await($selectStmt->close());
+
+        } finally {
+            $conn->close(true);
+        }
+    });
+
+    it('handles massive raw SQL string payloads (100k multi-row inserts) safely over the IPC pipe without truncation', function () {
+        $conn = sqliteConn(['force_sync' => false]);
+
+        try {
+            await($conn->query('
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+            '));
+
+            $rowsToInsert = 100000;
+            $values = [];
+            $dummyPayload = str_repeat('abcdefghij', 10);
+
+            for ($i = 1; $i <= $rowsToInsert; $i++) {
+                $username = 'user_' . $i;
+                $values[] = "('{$username}', '{$dummyPayload}')";
+            }
+
+            $sql = 'INSERT INTO users (username, payload) VALUES ' . implode(',', $values) . ';';
+
+            $result = await($conn->query($sql));
+            expect($result->affectedRows)->toBe($rowsToInsert);
+
+            $countResult = await($conn->query('SELECT COUNT(*) as total FROM users'));
+            $totalInDb = (int) $countResult->fetchOne()['total'];
+
+            expect($totalInDb)->toBe($rowsToInsert);
+
+        } finally {
+            $conn->close(true);
+        }
+    });
 });

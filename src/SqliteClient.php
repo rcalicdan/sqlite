@@ -432,7 +432,7 @@ final class SqliteClient implements SqlClientInterface
                         $innerWorkPromise->cancel();
                     }
 
-                    if ($activeTx instanceof Transaction && $activeTx->isActive()) {
+                    if ($activeTx instanceof Transaction) {
                         try {
                             $activeTx->forceCancelCurrentQuery();
                             await($activeTx->rollback());

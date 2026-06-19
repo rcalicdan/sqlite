@@ -51,6 +51,9 @@ final class SqliteWorkerDaemon
         $queryHandler = new DaemonQueryHandler($this->db, $stdout);
         $streamHandler = new DaemonStreamHandler($this->db, $stdout);
 
+        $requestCount = 0;
+        $memoryLimitBytes = 128 * 1024 * 1024; // 128 MB safety threshold
+
         while (($line = fgets($stdin)) !== false) {
             $line = trim($line);
             if ($line === '') {
@@ -88,6 +91,22 @@ final class SqliteWorkerDaemon
             } catch (\Throwable $e) {
                 $this->writeError($id, $e, $stdout);
             }
+
+            // Enterprise Stability: Memory Management
+            $requestCount++;
+
+            // Run GC every 1,000 queries to clean up cyclic references
+            if ($requestCount % 1000 === 0) {
+                gc_collect_cycles();
+
+                // Self-healing check: If memory bloats unexpectedly, exit cleanly.
+                // The parent AsyncConnection will detect the closed pipe, mark the connection
+                // as closed, and the PoolManager will transparently spawn a fresh worker.
+                if (memory_get_usage() > $memoryLimitBytes) {
+                    $this->db->close();
+                    exit(0);
+                }
+            }
         }
     }
 
@@ -118,8 +137,8 @@ final class SqliteWorkerDaemon
     }
 
     /**
-       * @param resource|null $stdout
-      */
+     * @param resource|null $stdout
+     */
     private function writeError(string $id, \Throwable $e, $stdout = null): void
     {
         $target = $stdout ?? STDOUT;

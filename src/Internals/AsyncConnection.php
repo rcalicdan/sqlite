@@ -9,6 +9,7 @@ use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\ConnectionException;
 use Hibla\Sqlite\Handlers\ConnectionQueryHandler;
 use Hibla\Sqlite\Handlers\ConnectionStreamHandler;
+use Hibla\Sqlite\Handlers\JsonIpcFrameHandler;
 use Hibla\Sqlite\Interfaces\ConnectionInterface;
 use Hibla\Sqlite\Utilities\SystemHelper;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
@@ -124,7 +125,9 @@ class AsyncConnection implements ConnectionInterface
                 $this->pid = $status['pid'];
 
                 $promise->resolve($this);
-                $this->startReadLoop();
+
+                $ipcHandler = new JsonIpcFrameHandler($this, $this->stdout);
+                $ipcHandler->start();
             } catch (\Throwable $e) {
                 $promise->reject(new ConnectionException('Failed to establish raw SQLite process connection.', 0, $e));
             }
@@ -292,7 +295,19 @@ class AsyncConnection implements ConnectionInterface
             $this->processResource = null;
         }
 
-        $this->rejectQueue(new ConnectionException('Connection has been closed.'));
+        $exception = new ConnectionException('Connection has been closed.');
+
+        if ($this->currentCommand !== null) {
+            if ($this->currentCommand->streamContext !== null) {
+                $this->currentCommand->streamContext->error($exception);
+            }
+            if (! $this->currentCommand->promise->isSettled()) {
+                $this->currentCommand->promise->reject($exception);
+            }
+            $this->currentCommand = null;
+        }
+
+        $this->rejectQueue($exception);
     }
 
     /**
@@ -384,75 +399,36 @@ class AsyncConnection implements ConnectionInterface
         }
     }
 
-    private function startReadLoop(): void
+    /**
+     * @internal
+     *
+     * @param array<string, mixed> $response
+     */
+    public function handleIpcFrame(array $response): void
     {
-        $stdout = $this->stdout;
-        if ($stdout === null) {
-            return;
-        }
+        if ($this->currentCommand !== null && isset($response['id']) && $response['id'] === $this->currentCommand->id) {
+            $cmdType = $this->currentCommand->type;
+            $isStream = ($cmdType === CommandRequest::TYPE_STREAM_QUERY || $cmdType === CommandRequest::TYPE_EXECUTE_STREAM);
 
-        async(function () use ($stdout): void {
-            /** @var string $buffer */
-            $buffer = '';
+            $isFinished = $isStream
+                ? $this->streamHandler->handleResponse($response, $this->currentCommand)
+                : $this->queryHandler->handleResponse($response, $this->currentCommand);
 
-            try {
-                while (null !== ($line = await($stdout->readLineAsync()))) {
-                    $buffer .= $line;
-
-                    if (trim($buffer) === '') {
-                        $buffer = '';
-
-                        continue;
-                    }
-
-                    $response = \json_decode($buffer, true);
-
-                    if (\is_array($response)) {
-                        // Successful decode: clear the buffer for the next frame
-                        $buffer = '';
-                    } else {
-                        // If decoding fails, it might be a truncated chunk OR malformed garbage.
-                        $isCompleteLine = str_ends_with($line, "\n") || str_ends_with($line, "\r");
-                        $ltrimmed = ltrim($buffer);
-
-                        if ($ltrimmed !== '' && $ltrimmed[0] !== '{') {
-                            // Valid frames ALWAYS start with '{'. If not, it's non-JSON pollution
-                            $buffer = '';
-                        } elseif ($isCompleteLine) {
-                            // Started with '{' but reached the end of the line and still failed to decode.
-                            // It's a completely malformed JSON string -> Discard.
-                            $buffer = '';
-                        }
-
-                        // Otherwise, it starts with '{' but no newline yet -> Truncated chunk. Keep buffering.
-                        continue;
-                    }
-
-                    if ($this->currentCommand !== null && isset($response['id']) && $response['id'] === $this->currentCommand->id) {
-                        /** @var array<string, mixed> $response */
-                        $cmdType = $this->currentCommand->type;
-                        $isStream = ($cmdType === CommandRequest::TYPE_STREAM_QUERY || $cmdType === CommandRequest::TYPE_EXECUTE_STREAM);
-
-                        $isFinished = $isStream
-                            ? $this->streamHandler->handleResponse($response, $this->currentCommand)
-                            : $this->queryHandler->handleResponse($response, $this->currentCommand);
-
-                        if ($isFinished) {
-                            $this->currentCommand = null;
-                            $this->processNextCommand();
-                        }
-                    }
-
-                    if ($this->paused && $this->pausePromise !== null) {
-                        await($this->pausePromise);
-                    }
-                }
-            } catch (\Throwable $e) {
-                $this->handleCrash(new ConnectionException('SQLite IPC pipe read loop failed.', 0, $e));
-            } finally {
-                $this->handleCrash(new ConnectionException('SQLite process stream closed.'));
+            if ($isFinished) {
+                $this->currentCommand = null;
+                $this->processNextCommand();
             }
-        });
+        }
+    }
+
+    /**
+     * @internal
+     */
+    public function awaitPauseCheck(): void
+    {
+        if ($this->paused && $this->pausePromise !== null) {
+            await($this->pausePromise);
+        }
     }
 
     public function handleCrash(\Throwable $e): void
