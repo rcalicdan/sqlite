@@ -76,6 +76,8 @@ final class JsonIpcFrameHandler
             } finally {
                 $this->connection->handleCrash(new ConnectionException('SQLite process stream closed.'));
             }
+        })->catch(function (\Throwable $e): void {
+           // Ignore any errors that occur while the handler is running.
         });
     }
 }

@@ -63,7 +63,7 @@ final class SyncRowStream implements RowStreamInterface
         return $this->closePromise;
     }
 
-    /**
+   /**
      * {@inheritDoc}
      *
      * @return \Generator<int, array<string, mixed>>
@@ -71,9 +71,22 @@ final class SyncRowStream implements RowStreamInterface
     public function getIterator(): \Generator
     {
         try {
-            while (($row = $this->result->fetchArray(SQLITE3_ASSOC)) !== false) {
+            while (true) {
                 if ($this->cancelled) {
                     throw new CancelledException('Stream was cancelled.');
+                }
+
+                try {
+                    $row = $this->result->fetchArray(SQLITE3_ASSOC);
+                } catch (\Throwable $e) {
+                    if ($this->cancelled) {
+                        throw new CancelledException('Stream was cancelled.');
+                    }
+                    throw $e;
+                }
+
+                if ($row === false) {
+                    break;
                 }
 
                 yield $row;
@@ -84,7 +97,11 @@ final class SyncRowStream implements RowStreamInterface
                 }
             }
         } finally {
-            @$this->result->finalize();
+            try {
+                @$this->result->finalize();
+            } catch (\Throwable $e) {
+                // Ignore any errors that occur while finalizing the result.
+            }
         }
 
         if ($this->closePromise->isPending()) {
@@ -102,7 +119,12 @@ final class SyncRowStream implements RowStreamInterface
         }
 
         $this->cancelled = true;
-        @$this->result->finalize();
+
+        try {
+            @$this->result->finalize();
+        } catch (\Throwable $e) {
+            // Ignore any errors that occur while finalizing the result.
+        }
 
         if ($this->closePromise->isPending()) {
             $this->closePromise->reject(new CancelledException('Stream was cancelled.'));
