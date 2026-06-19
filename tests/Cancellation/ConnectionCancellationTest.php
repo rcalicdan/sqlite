@@ -25,7 +25,7 @@ describe('AsyncConnection - Cancellation', function () {
             await($slowPromise);
 
             expect($queuedPromise->isCancelled())->toBeTrue();
-            expect(fn() => await($queuedPromise))->toThrow(CancelledException::class);
+            expect(fn () => await($queuedPromise))->toThrow(CancelledException::class);
 
             $result = await($conn->query('SELECT 99 AS ok'));
             expect($result->fetchOne()['ok'])->toBe(99);
@@ -50,7 +50,7 @@ describe('AsyncConnection - Cancellation', function () {
                 $slowPromise->cancel();
             });
 
-            expect(fn() => await($slowPromise))->toThrow(CancelledException::class);
+            expect(fn () => await($slowPromise))->toThrow(CancelledException::class);
             expect($conn->isClosed())->toBeTrue();
         } finally {
             $conn->close();
@@ -74,7 +74,7 @@ describe('AsyncConnection - Cancellation', function () {
                 $slowPromise->cancel();
             });
 
-            expect(fn() => await($slowPromise))->toThrow(CancelledException::class);
+            expect(fn () => await($slowPromise))->toThrow(CancelledException::class);
             expect($conn->isClosed())->toBeFalse();
 
             await(delay(1.5));
@@ -94,13 +94,13 @@ describe('AsyncConnection - Cancellation', function () {
 
         try {
             $p1 = $conn->query(slowCteQuery());
-            Loop::addTimer(0.1, fn() => $p1->cancel());
-            expect(fn() => await($p1))->toThrow(CancelledException::class);
+            Loop::addTimer(0.1, fn () => $p1->cancel());
+            expect(fn () => await($p1))->toThrow(CancelledException::class);
             await(delay(1.5));
 
             $p2 = $conn->query(slowCteQuery());
-            Loop::addTimer(0.1, fn() => $p2->cancel());
-            expect(fn() => await($p2))->toThrow(CancelledException::class);
+            Loop::addTimer(0.1, fn () => $p2->cancel());
+            expect(fn () => await($p2))->toThrow(CancelledException::class);
             await(delay(1.5));
 
             $result = await($conn->query('SELECT 123 AS val'));
@@ -124,12 +124,12 @@ describe('AsyncConnection - Cancellation', function () {
             $queuedPromise1 = $conn->query('SELECT 1');
             $queuedPromise2 = $conn->query('SELECT 2');
 
-            Loop::addTimer(0.1, fn() => $slowPromise->cancel());
+            Loop::addTimer(0.1, fn () => $slowPromise->cancel());
 
-            expect(fn() => await($slowPromise))->toThrow(CancelledException::class);
+            expect(fn () => await($slowPromise))->toThrow(CancelledException::class);
 
-            expect(fn() => await($queuedPromise1))->toThrow(ConnectionException::class);
-            expect(fn() => await($queuedPromise2))->toThrow(ConnectionException::class);
+            expect(fn () => await($queuedPromise1))->toThrow(ConnectionException::class);
+            expect(fn () => await($queuedPromise2))->toThrow(ConnectionException::class);
 
             expect($conn->isClosed())->toBeTrue();
         } finally {
@@ -176,7 +176,7 @@ describe('AsyncConnection - Cancellation', function () {
             await($slowPromise);
 
             expect($pingPromise->isCancelled())->toBeTrue();
-            expect(fn() => await($pingPromise))->toThrow(CancelledException::class);
+            expect(fn () => await($pingPromise))->toThrow(CancelledException::class);
 
             $ok = await($conn->ping());
             expect($ok)->toBeTrue();
@@ -202,7 +202,7 @@ describe('AsyncConnection - Cancellation', function () {
                 $execPromise->cancel();
             });
 
-            expect(fn() => await($execPromise))->toThrow(CancelledException::class);
+            expect(fn () => await($execPromise))->toThrow(CancelledException::class);
             expect($conn->isClosed())->toBeTrue();
         } finally {
             $conn->close();

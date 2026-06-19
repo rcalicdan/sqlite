@@ -22,7 +22,7 @@ describe('AsyncConnection - Streaming Cancellation', function () {
             $stream = await($conn->streamQuery(streamCancelQuery(), 10));
 
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
@@ -44,12 +44,12 @@ describe('AsyncConnection - Streaming Cancellation', function () {
 
         try {
             $slowPromise = $conn->query(slowCteQuery());
-            
+
             $stmt = await($conn->prepare(streamCancelQuery()));
             $stream = await($conn->executeStream($stmt, [], 10));
 
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
@@ -62,7 +62,7 @@ describe('AsyncConnection - Streaming Cancellation', function () {
             await($stmt->close());
 
             $result = await($conn->query('SELECT 42 AS val'));
-            expect($result->fetchOne()['val'])->toBe(42); 
+            expect($result->fetchOne()['val'])->toBe(42);
         } finally {
             $conn->close();
         }
@@ -76,7 +76,7 @@ describe('AsyncConnection - Streaming Cancellation', function () {
             expect($stream)->toBeInstanceOf(RowStreamInterface::class);
 
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
@@ -103,7 +103,7 @@ describe('AsyncConnection - Streaming Cancellation', function () {
             expect($stream)->toBeInstanceOf(RowStreamInterface::class);
 
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
@@ -149,7 +149,7 @@ describe('AsyncConnection - Streaming Cancellation', function () {
             $stream = await($conn->streamQuery(streamCancelQuery(), 10));
 
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
@@ -185,9 +185,9 @@ describe('AsyncConnection - Streaming Cancellation', function () {
             $stmt = await($conn->prepare('SELECT ? AS val'));
 
             $stream = await($conn->executeStream($stmt, [100], 10));
-            
+
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
@@ -225,9 +225,9 @@ describe('SyncConnection - Streaming Cancellation', function (): void {
 
         try {
             $stream = await($conn->streamQuery('SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3'));
-            
+
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
@@ -262,7 +262,7 @@ describe('SyncConnection - Streaming Cancellation', function (): void {
             $stream = await($conn->executeStream($stmt, [100, 200]));
 
             if ($stream instanceof SqliteRowStream || $stream instanceof SyncRowStream) {
-                $stream->onClose()->catch(function (\Throwable $e): void {
+                $stream->onClose()->catch(function (Throwable $e): void {
                 });
             }
 
