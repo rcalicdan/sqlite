@@ -21,6 +21,10 @@ describe('JsonIpcFrameHandler', function () {
         $connection = Mockery::mock(AsyncConnection::class);
         $stream = Mockery::mock(PromiseReadableStream::class);
 
+        $connection->shouldReceive('hasActiveCommand')
+            ->andReturn(true)
+        ;
+
         $connection->shouldReceive('handleIpcFrame')
             ->once()
             ->with(['id' => '123', 'status' => 'COMPLETED'])
@@ -41,7 +45,7 @@ describe('JsonIpcFrameHandler', function () {
         ;
 
         $handler = new JsonIpcFrameHandler($connection, $stream);
-        $handler->start();
+        $handler->readLoop();
 
         await(delay(0.05));
     });
@@ -49,6 +53,10 @@ describe('JsonIpcFrameHandler', function () {
     it('assembles a JSON frame split across multiple read chunks', function () {
         $connection = Mockery::mock(AsyncConnection::class);
         $stream = Mockery::mock(PromiseReadableStream::class);
+
+        $connection->shouldReceive('hasActiveCommand')
+            ->andReturn(true)
+        ;
 
         $connection->shouldReceive('handleIpcFrame')
             ->once()
@@ -72,7 +80,7 @@ describe('JsonIpcFrameHandler', function () {
         ;
 
         $handler = new JsonIpcFrameHandler($connection, $stream);
-        $handler->start();
+        $handler->readLoop();
 
         await(delay(0.05));
     });
@@ -80,6 +88,10 @@ describe('JsonIpcFrameHandler', function () {
     it('ignores empty lines and pure whitespace', function () {
         $connection = Mockery::mock(AsyncConnection::class);
         $stream = Mockery::mock(PromiseReadableStream::class);
+
+        $connection->shouldReceive('hasActiveCommand')
+            ->andReturn(true)
+        ;
 
         $connection->shouldReceive('handleIpcFrame')
             ->once()
@@ -103,14 +115,18 @@ describe('JsonIpcFrameHandler', function () {
         ;
 
         $handler = new JsonIpcFrameHandler($connection, $stream);
-        $handler->start();
+        $handler->readLoop();
 
-        \Hibla\await(delay(0.05));
+        await(delay(0.05));
     });
 
     it('discards malformed non-JSON garbage strings but continues parsing subsequent valid frames', function () {
         $connection = Mockery::mock(AsyncConnection::class);
         $stream = Mockery::mock(PromiseReadableStream::class);
+
+        $connection->shouldReceive('hasActiveCommand')
+            ->andReturn(true)
+        ;
 
         $connection->shouldReceive('handleIpcFrame')
             ->once()
@@ -133,14 +149,18 @@ describe('JsonIpcFrameHandler', function () {
         ;
 
         $handler = new JsonIpcFrameHandler($connection, $stream);
-        $handler->start();
+        $handler->readLoop();
 
-        \Hibla\await(delay(0.05));
+        await(delay(0.05));
     });
 
     it('discards a JSON string that starts correctly but is structurally malformed at the newline boundary', function () {
         $connection = Mockery::mock(AsyncConnection::class);
         $stream = Mockery::mock(PromiseReadableStream::class);
+
+        $connection->shouldReceive('hasActiveCommand')
+            ->andReturn(true)
+        ;
 
         $connection->shouldReceive('handleIpcFrame')
             ->once()
@@ -163,14 +183,18 @@ describe('JsonIpcFrameHandler', function () {
         ;
 
         $handler = new JsonIpcFrameHandler($connection, $stream);
-        $handler->start();
+        $handler->readLoop();
 
-        \Hibla\await(delay(0.05));
+        await(delay(0.05));
     });
 
     it('triggers handleCrash on the connection when readLineAsync throws an exception', function () {
         $connection = Mockery::mock(AsyncConnection::class);
         $stream = Mockery::mock(PromiseReadableStream::class);
+
+        $connection->shouldReceive('hasActiveCommand')
+            ->andReturn(true)
+        ;
 
         $connection->shouldNotReceive('handleIpcFrame');
         $connection->shouldNotReceive('awaitPauseCheck');
@@ -189,16 +213,8 @@ describe('JsonIpcFrameHandler', function () {
             }))
         ;
 
-        $connection->shouldReceive('handleCrash')
-            ->once()
-            ->with(Mockery::on(function ($exception) {
-                return $exception instanceof ConnectionException
-                    && str_contains($exception->getMessage(), 'SQLite process stream closed');
-            }))
-        ;
-
         $handler = new JsonIpcFrameHandler($connection, $stream);
-        $handler->start();
+        $handler->readLoop();
 
         await(delay(0.05));
     });

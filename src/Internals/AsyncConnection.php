@@ -259,7 +259,7 @@ class AsyncConnection implements ConnectionInterface
         }
 
         /** @var PromiseInterface<bool> */
-        return $this->query('SELECT 1')->then(static fn() => true);
+        return $this->query('SELECT 1')->then(static fn () => true);
     }
 
     /**
@@ -274,7 +274,7 @@ class AsyncConnection implements ConnectionInterface
         }
 
         return $this->enqueueCommand(CommandRequest::TYPE_RESET, '')
-            ->then(static fn() => true)
+            ->then(static fn () => true)
         ;
     }
 

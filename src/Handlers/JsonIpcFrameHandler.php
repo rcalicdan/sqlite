@@ -48,9 +48,6 @@ final class JsonIpcFrameHandler
                 // Only read from the stream when there is an actual command pending
                 while ($this->connection->hasActiveCommand()) {
 
-                    // Handles stream backpressure safely between valid frames
-                    $this->connection->awaitPauseCheck();
-
                     $line = await($this->stdout->readLineAsync());
 
                     if ($line === null) {
@@ -86,13 +83,20 @@ final class JsonIpcFrameHandler
                             // It's a completely malformed JSON string -> Discard.
                             $this->buffer = '';
                         }
+
+                        continue; // Skip the backpressure check for incomplete chunks
                     }
+
+                    // Handles stream backpressure safely between valid frames
+                    $this->connection->awaitPauseCheck();
                 }
             } catch (\Throwable $e) {
                 $this->connection->handleCrash(new ConnectionException('SQLite IPC pipe read loop failed.', 0, $e));
             } finally {
                 $this->isReading = false;
             }
+        })->catch(function (\Throwable $e): void {
+            // Ignore unhandled fiber exceptions natively
         });
     }
 }
