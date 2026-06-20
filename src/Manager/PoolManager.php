@@ -83,7 +83,7 @@ final class PoolManager
      */
     private readonly mixed $onConnect;
 
-    /**
+   /**
      * @param (callable(ConnectionSetupInterface): (PromiseInterface<mixed>|void))|null $onConnect
      * @param bool $deleteDatabaseOnShutdown Whether to delete the physical database file upon pool close.
      */
@@ -115,6 +115,8 @@ final class PoolManager
         $this->waiters = new SplQueue();
         $this->onConnect = $onConnect;
 
+        // Clean up stale database or lock files left behind by prior abnormal crashes
+        $this->cleanupDatabaseFiles();
         $this->ensureMinConnections();
     }
 
