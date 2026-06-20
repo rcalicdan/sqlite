@@ -3,6 +3,12 @@
     "description": "Non Blocking Sqlite3 Client",
     "type": "library",
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Reymart A. Calicdan",
+            "email": "reymart.calicdan06@gmail.com"
+        }
+    ],
     "autoload": {
         "psr-4": {
             "Hibla\\Sqlite\\": "src/"
@@ -13,7 +19,7 @@
             "Tests\\": "tests/"
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "beta",
     "prefer-stable": true,
     "require": {
         "hiblaphp/event-loop": "^1.0",
