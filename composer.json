@@ -22,6 +22,7 @@
     "minimum-stability": "beta",
     "prefer-stable": true,
     "require": {
+        "ext-sqlite3": "*",
         "hiblaphp/event-loop": "^1.0",
         "hiblaphp/promise": "^1.0",
         "hiblaphp/async": "^1.0",
