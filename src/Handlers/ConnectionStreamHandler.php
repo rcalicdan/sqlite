@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Sqlite\Handlers;
 
 use Hibla\Sqlite\Internals\AsyncConnection;
+use Hibla\Sqlite\Utilities\BlobCodec;
 use Hibla\Sqlite\Utilities\ExceptionHandler;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
 
@@ -25,7 +26,7 @@ final class ConnectionStreamHandler
             'id' => $request->id,
             'cmd' => 'stream',
             'sql' => $request->sql,
-            'params' => $request->params,
+            'params' => BlobCodec::encodeArray($request->params),
         ], JSON_UNESCAPED_SLASHES);
 
         $this->connection->writeIpc($payload . "\n");
@@ -58,7 +59,10 @@ final class ConnectionStreamHandler
         if ($response['status'] === 'ROW') {
             /** @var array<string, mixed> $row */
             $row = isset($response['row']) && \is_array($response['row']) ? $response['row'] : [];
-            $stream->push($row);
+
+            /** @var array<string, mixed> $decodedRow */
+            $decodedRow = BlobCodec::decodeArray($row);
+            $stream->push($decodedRow);
 
             return false;
         }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Sqlite\Handlers;
 
+use Hibla\Sqlite\Utilities\BlobCodec;
+
 /**
  * Handles standard, buffered query and execution commands inside the worker daemon.
  *
@@ -64,7 +66,7 @@ final class DaemonQueryHandler extends AbstractDaemonHandler
             'id' => $id,
             'status' => 'COMPLETED',
             'result' => [
-                'rows' => $rows,
+                'rows' => BlobCodec::encodeRows($rows),
                 'affectedRows' => $this->db->changes(),
                 'lastInsertId' => $this->db->lastInsertRowID(),
             ],

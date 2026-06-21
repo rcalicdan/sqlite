@@ -235,6 +235,29 @@ describe('AsyncConnection - Edge Cases', function () {
             $conn->close();
         }
     });
+
+    it('safely inserts and retrieves raw binary BLOB data over the IPC pipe', function () {
+        $conn = sqliteConn(['force_sync' => false]);
+
+        try {
+            await($conn->query('CREATE TABLE binary_test (id INTEGER PRIMARY KEY, payload BLOB)'));
+
+            $binaryData = random_bytes(32);
+
+            $stmt = await($conn->prepare('INSERT INTO binary_test (payload) VALUES (:payload)'));
+            await($stmt->execute(['payload' => $binaryData]));
+            await($stmt->close());
+
+            $result = await($conn->query('SELECT payload FROM binary_test WHERE id = 1'));
+            $retrieved = $result->fetchOne()['payload'];
+
+            expect(strlen($retrieved))->toBe(32)
+                ->and(bin2hex($retrieved))->toBe(bin2hex($binaryData))
+            ;
+        } finally {
+            $conn->close(true);
+        }
+    });
 });
 
 describe('SyncConnection - Edge Cases', function () {
@@ -509,7 +532,6 @@ describe('SyncConnection - Edge Cases', function () {
 
             await($insertStmt->close());
             await($selectStmt->close());
-
         } finally {
             $conn->close(true);
         }
@@ -545,7 +567,29 @@ describe('SyncConnection - Edge Cases', function () {
             $totalInDb = (int) $countResult->fetchOne()['total'];
 
             expect($totalInDb)->toBe($rowsToInsert);
+        } finally {
+            $conn->close(true);
+        }
+    });
 
+    it('safely inserts and retrieves raw binary BLOB data over sync connection', function () {
+        $conn = sqliteConn(['force_sync' => true]);
+
+        try {
+            await($conn->query('CREATE TABLE binary_test (id INTEGER PRIMARY KEY, payload BLOB)'));
+
+            $binaryData = random_bytes(32);
+
+            $stmt = await($conn->prepare('INSERT INTO binary_test (payload) VALUES (:payload)'));
+            await($stmt->execute(['payload' => $binaryData]));
+            await($stmt->close());
+
+            $result = await($conn->query('SELECT payload FROM binary_test WHERE id = 1'));
+            $retrieved = $result->fetchOne()['payload'];
+
+            expect(strlen($retrieved))->toBe(32)
+                ->and(bin2hex($retrieved))->toBe(bin2hex($binaryData))
+            ;
         } finally {
             $conn->close(true);
         }

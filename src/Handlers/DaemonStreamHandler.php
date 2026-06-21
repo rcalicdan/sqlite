@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Sqlite\Handlers;
 
+use Hibla\Sqlite\Utilities\BlobCodec;
+
 /**
  * Handles row-by-row streaming queries and executions inside the worker daemon.
  *
@@ -40,7 +42,7 @@ final class DaemonStreamHandler extends AbstractDaemonHandler
                 $success = $this->writeFrame([
                     'id' => $id,
                     'status' => 'ROW',
-                    'row' => $row,
+                    'row' => BlobCodec::encodeArray($row),
                 ]);
 
                 // If writing fails, the parent cancelled/disconnected. Stop fetching immediately!

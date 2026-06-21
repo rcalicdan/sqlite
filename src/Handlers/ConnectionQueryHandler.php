@@ -6,6 +6,7 @@ namespace Hibla\Sqlite\Handlers;
 
 use Hibla\Sqlite\Internals\AsyncConnection;
 use Hibla\Sqlite\Internals\Result;
+use Hibla\Sqlite\Utilities\BlobCodec;
 use Hibla\Sqlite\Utilities\ExceptionHandler;
 use Hibla\Sqlite\ValueObjects\CommandRequest;
 
@@ -26,7 +27,7 @@ final class ConnectionQueryHandler
             'id' => $request->id,
             'cmd' => 'query',
             'sql' => $request->sql,
-            'params' => $request->params,
+            'params' => BlobCodec::encodeArray($request->params),
         ], JSON_UNESCAPED_SLASHES);
 
         $this->connection->writeIpc($payload . "\n");
@@ -56,6 +57,7 @@ final class ConnectionQueryHandler
 
             /** @var array<int, array<string, mixed>> $rows */
             $rows = isset($resultData['rows']) && \is_array($resultData['rows']) ? $resultData['rows'] : [];
+            $rows = BlobCodec::decodeRows($rows);
 
             $result = new Result(
                 affectedRows: $affectedRows,

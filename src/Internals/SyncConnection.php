@@ -283,6 +283,7 @@ class SyncConnection implements ConnectionInterface
                 \is_float($value) => SQLITE3_FLOAT,
                 \is_null($value) => SQLITE3_NULL,
                 \is_bool($value) => SQLITE3_INTEGER,
+                \is_string($value) && ! \mb_check_encoding($value, 'UTF-8') => SQLITE3_BLOB,
                 default => SQLITE3_TEXT,
             };
 

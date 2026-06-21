@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Sqlite\Handlers;
 
+use Hibla\Sqlite\Utilities\BlobCodec;
+
 /**
  * @internal
  */
@@ -55,15 +57,23 @@ abstract class AbstractDaemonHandler
     protected function bindParams(\SQLite3Stmt $stmt, array $params): void
     {
         foreach ($params as $key => $value) {
+            $isBlob = \is_array($value)
+                && isset($value[BlobCodec::BLOB_KEY])
+                && \is_string($value[BlobCodec::BLOB_KEY]);
+
             $type = match (true) {
                 \is_int($value) => SQLITE3_INTEGER,
                 \is_float($value) => SQLITE3_FLOAT,
                 \is_null($value) => SQLITE3_NULL,
                 \is_bool($value) => SQLITE3_INTEGER,
+                $isBlob => SQLITE3_BLOB,
                 default => SQLITE3_TEXT,
             };
 
-            if (\is_bool($value)) {
+            if ($type === SQLITE3_BLOB && \is_array($value) && \is_string($value[BlobCodec::BLOB_KEY])) {
+                $decoded = \base64_decode($value[BlobCodec::BLOB_KEY], true);
+                $value = $decoded !== false ? $decoded : '';
+            } elseif (\is_bool($value)) {
                 $value = $value ? 1 : 0;
             }
 
