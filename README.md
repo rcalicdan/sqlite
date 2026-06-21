@@ -16,6 +16,7 @@
 | Sync Fallback | Supported | Transparently falls back to synchronous execution if `proc_open` is disabled or forced via config. |
 | Lazy connection pooling | Supported | No worker processes spawned until the first query. |
 | Parameterized queries | Supported | SQL-injection safe via prepared statements. |
+| BLOB / Binary Data | Supported | Automatically serializes raw binary data (e.g. UUIDs, encryption keys) over the IPC pipe without corruption. |
 | Named parameters (`:name`) | Supported | Parsed client-side, works with `query()`, `prepare()`, and all transaction methods. |
 | Positional `?` parameters | Supported | Supported natively. |
 | Prepared statements | Supported | Explicit lifecycle control with `prepare()` and `close()`. |
@@ -268,6 +269,8 @@ When parameters are provided, the library automatically uses a prepared statemen
 
 > **Note on booleans:** SQLite has no native boolean type. The library automatically normalizes PHP `true`/`false` to `1` and `0` when binding parameters.
 
+> **Note on Binary Data (BLOBs):** SQLite can store raw binary data (like UUIDs, images, or encrypted values) in `BLOB` columns. Because the underlying IPC worker communicates using JSON, raw binary bytes would normally corrupt the stream. The library automatically detects binary data (non-UTF-8 strings) and serializes it safely using a high-performance Base64 codec. It is seamlessly decoded back to raw binary bytes when retrieved, requiring no extra effort from the developer.
+
 **Positional `?` placeholders:**
 
 ```php
@@ -290,6 +293,24 @@ $result = await(
         ['since' => $since, 'status' => 'active']
     )
 );
+```
+
+**Working with Binary Data (BLOBs):**
+
+You can seamlessly insert and retrieve binary data without any manual encoding or decoding:
+
+```php
+// Generate 32 bytes of raw binary data (invalid UTF-8)
+$token = random_bytes(32);
+
+// Auto-serialized cleanly over the IPC barrier
+await($client->query('INSERT INTO sessions (token) VALUES (?)', [$token]));
+
+// Auto-decoded back to identical raw bytes on retrieve
+$result = await($client->query('SELECT token FROM sessions WHERE id = 1'));
+$retrievedToken = $result->fetchOne()['token']; 
+
+assert($retrievedToken === $token); // True!
 ```
 
 ### Convenience methods
@@ -315,6 +336,7 @@ Native SQLite lacks a sleep function, which makes testing timeouts and async con
 ```php
 // Pauses the background worker for 1.5 seconds without blocking the main event loop unless `forceSync` is enabled.
 await($client->query('SELECT sleep(1.5)'));
+```
 
 ---
 
