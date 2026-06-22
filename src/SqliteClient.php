@@ -8,7 +8,7 @@ use Hibla\Cache\ArrayCache;
 use Hibla\Promise\Exceptions\CancelledException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
-use Hibla\Sql\Enums\DatabaseDriver;
+use Hibla\Sql\DatabaseDriver;
 use Hibla\Sql\IsolationLevelInterface;
 use Hibla\Sql\Result as ResultInterface;
 use Hibla\Sql\RowStream as RowStreamInterface;
@@ -59,7 +59,7 @@ final class SqliteClient implements SqlClientInterface
      * @inheritdoc
      */
     public DatabaseDriver $driver {
-        get() => DatabaseDriver::Sqlite;
+        get => DatabaseDriver::Sqlite;
     }
 
     /**
